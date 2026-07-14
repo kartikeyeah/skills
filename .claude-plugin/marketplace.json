@@ -1,0 +1,19 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "neosigma-skills",
+  "version": "1.0.0",
+  "description": "NeoSigma skills for instrumenting agents with the NeoSigma SDK: agent tracing and product events.",
+  "owner": {
+    "name": "NeoSigma",
+    "email": "founders@neosigma.ai"
+  },
+  "plugins": [
+    {
+      "name": "neosigma",
+      "description": "Skill for integrating the NeoSigma SDK: agent tracing (Python) and product events (TypeScript), correlated per turn.",
+      "version": "1.0.0",
+      "source": "./",
+      "category": "developer-tools"
+    }
+  ]
+}

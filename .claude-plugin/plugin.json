@@ -1,0 +1,22 @@
+{
+  "name": "neosigma",
+  "description": "Skill for integrating the NeoSigma SDK — agent tracing and product events — into your codebase, following NeoSigma best practices.",
+  "version": "1.0.0",
+  "author": {
+    "name": "NeoSigma",
+    "email": "founders@neosigma.ai"
+  },
+  "homepage": "https://neosigma.ai",
+  "repository": "https://github.com/neosigmaai/skills",
+  "license": "MIT",
+  "keywords": [
+    "neosigma",
+    "llm",
+    "observability",
+    "tracing",
+    "product-events",
+    "opentelemetry",
+    "agents",
+    "sdk"
+  ]
+}
