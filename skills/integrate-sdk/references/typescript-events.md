@@ -3,7 +3,8 @@
 Instrument a TypeScript/Node codebase with the npm package `neosigma-sdk` so
 product events (user actions) flow into NeoSigma and join the agent traces for
 the same turn. This file is the API surface of record for the TypeScript SDK.
-It emits product events only; tracing comes from the Python SDK.
+It emits product events only; tracing comes from the Python SDK. If something
+seems missing, check https://docs.neosigma.ai/sdk/events rather than guessing.
 
 ## 1. Assess the codebase
 

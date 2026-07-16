@@ -2,6 +2,8 @@
 
 [Agent Skills](https://github.com/anthropics/skills) that teach AI coding assistants how to work with [NeoSigma](https://neosigma.ai): instrument a codebase with the NeoSigma SDK so agent runs land as traces and product events join them.
 
+Full SDK documentation: [docs.neosigma.ai](https://docs.neosigma.ai)
+
 ## Skills
 
 | Skill                                   | Description                                                                                                                                                                       |

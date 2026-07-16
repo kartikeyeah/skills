@@ -2,7 +2,8 @@
 
 Instrument a Python codebase with `neosigma-sdk` so agent runs land in
 NeoSigma as traces. This file is the API surface of record for the Python SDK
-(0.4.x). Parameters not listed here do not exist.
+(0.4.x). Parameters not listed here do not exist. If something seems missing,
+check https://docs.neosigma.ai/sdk/tracing rather than guessing.
 
 ## 1. Assess the codebase
 
