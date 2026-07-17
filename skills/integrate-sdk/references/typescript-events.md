@@ -58,6 +58,12 @@ trace uses. Every `capture()` inside the scope, at any await depth, carries
 the ids. `identify()` must be called inside a scope (outside one it is
 dropped with a warning).
 
+A `turn()` (the tracing side, see
+[typescript-tracing.md](typescript-tracing.md)) also binds these ids, so a
+`capture()` inside a `turn()` joins that turn's trace directly, no separate
+`trace()` needed. Use a standalone `trace()` only where no `turn()` is open, for
+example a pure user-action route with no model call.
+
 ```ts
 import { trace, capture, identify } from "neosigma-sdk";
 
