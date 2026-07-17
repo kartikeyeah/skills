@@ -1,6 +1,6 @@
 {
   "name": "neosigma",
-  "description": "Skill for integrating the NeoSigma SDK — agent tracing and product events — into your codebase, following NeoSigma best practices.",
+  "description": "Skill for integrating the NeoSigma SDK (agent tracing in Python and TypeScript, framework adapters, product events, dual export) into your codebase, following NeoSigma best practices.",
   "version": "1.0.0",
   "author": {
     "name": "NeoSigma",

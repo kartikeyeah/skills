@@ -33,11 +33,12 @@ reached NeoSigma.
    with no per-call code. Reach for manual `@neosigma.tool()` spans only for
    what remains.
 5. **Never break the existing telemetry.** If the app already configures
-   OpenTelemetry, dual export is an explicit opt-in:
-   `neosigma.init(attach_to_existing_provider=True)`, called AFTER the app's
-   own provider setup. Without the flag the SDK stays dark next to an
-   existing provider (it warns, it never stomps). Follow the dual-export
-   section of the Python reference exactly.
+   OpenTelemetry, dual export is an explicit opt-in, called AFTER the app's own
+   provider setup: `attach_to_existing_provider=True` in Python,
+   `attachToExistingProvider: true` (or `extraSpanProcessors` when NeoSigma owns
+   the provider) in TypeScript. Without it the SDK warns and stays disabled next
+   to an existing provider rather than replacing it. Both backends keep receiving
+   every span. Follow the dual-export section of the matching reference exactly.
 6. **Keys stay out of chat and out of code.** Ask the user to set
    `NEOSIGMA_API_KEY` (an `ns_live_...` key from Settings > Developer > API
    Keys) in their environment. Never paste a key into a file or a message.
@@ -50,13 +51,16 @@ reached NeoSigma.
 
 ## Workflow
 
-0. **Route by what must flow.** Agent traces from Python code: use
-   [references/python-tracing.md](references/python-tracing.md). Product
-   events from TypeScript code: use
+0. **Route by language and surface.** Both SDKs do full agent tracing; the
+   TypeScript SDK also emits product events. Agent traces from Python: use
+   [references/python-tracing.md](references/python-tracing.md). Agent traces
+   from TypeScript/Node: use
+   [references/typescript-tracing.md](references/typescript-tracing.md).
+   Product events from TypeScript: use
    [references/typescript-events.md](references/typescript-events.md). A
-   full-stack app usually needs both, correlated per principle 3. If the
-   agent code is in neither language, say so and stop; do not improvise an
-   SDK.
+   full-stack app usually needs the tracing reference for its agent's language
+   plus the TypeScript events reference, correlated per principle 3. If the
+   agent code is in neither language, say so and stop; do not improvise an SDK.
 1. **Assess the codebase** per the matching reference's section 1 (execution
    path, LLM surface, existing OpenTelemetry, the app's own ids).
 2. **Instrument** following the reference exactly: lifecycle first
@@ -71,11 +75,15 @@ reached NeoSigma.
 - Python tracing (turns, adapters, auto-instrumentation, FastAPI middleware,
   dual export with an existing TracerProvider, lifecycle, verification):
   [references/python-tracing.md](references/python-tracing.md)
+- TypeScript tracing (turns, the Vercel AI SDK / LangChain / Claude Agent SDK /
+  Managed Agents adapters, dual export via `extraSpanProcessors` or attach,
+  flush-by-runtime-shape, verification):
+  [references/typescript-tracing.md](references/typescript-tracing.md)
 - TypeScript product events (capture/identify, binding turns, concurrency,
   serverless, shutdown): [references/typescript-events.md](references/typescript-events.md)
-- Correlating the two: both references share the id model in principle 3. The
-  TypeScript `turnId` must equal the Python `turn_id` for the same user
-  message; ids are camelCase in TypeScript code and snake_case on the wire.
+- Correlating across the SDKs: the references share the id model in principle 3.
+  A `turnId`/`turn_id` for the same user message must match verbatim across
+  languages; ids are camelCase in TypeScript code and snake_case on the wire.
 
 ## Output format
 
@@ -96,6 +104,16 @@ startup and `shutdown()` on exit,
 open one `turn()` per request in the chat handler (session/user/message ids
 from the request), decorate the tool functions with `@neosigma.tool()`, run
 one request with console export, then confirm the trace in NeoSigma.
+
+**Happy path (TypeScript).** "Add NeoSigma tracing to our Node chatbot" that
+uses LangChain, with the Vercel AI SDK in one path. Read the TypeScript tracing
+reference. Call `init()` and `installShutdownHandlers()` at startup (long-running
+server), open a `turn()` per request in the chat route (session/user/message ids
+from the request), and pass `neosigmaCallbackHandler()` in the LangChain
+`callbacks`. For the AI SDK path, add `registerTelemetry(new OpenTelemetry())`
+from `@ai-sdk/otel` at startup and use `wrapAISDK(ai)`, or that path emits no
+spans. Run one request with `NEOSIGMA_CONSOLE_EXPORT=true` plus `await flush()`
+to see the spans, then confirm the trace in NeoSigma.
 
 **Edge case: existing OpenTelemetry.** The app already installs its own
 TracerProvider exporting to another backend. Do not replace it and do not

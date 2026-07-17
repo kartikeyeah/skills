@@ -2,9 +2,11 @@
 
 Instrument a TypeScript/Node codebase with the npm package `neosigma-sdk` so
 product events (user actions) flow into NeoSigma and join the agent traces for
-the same turn. This file is the API surface of record for the TypeScript SDK.
-It emits product events only; tracing comes from the Python SDK. If something
-seems missing, check https://docs.neosigma.ai/sdk/events rather than guessing.
+the same turn. This file covers the product-events surface of the TypeScript
+SDK; for agent tracing (turns, the framework adapters, dual export) use
+[typescript-tracing.md](typescript-tracing.md). Events and tracing run in one
+process and share one id model. If something seems missing, check
+https://docs.neosigma.ai/sdk/events rather than guessing.
 
 ## 1. Assess the codebase
 
@@ -32,7 +34,8 @@ init(); // once at startup; reads NEOSIGMA_API_KEY; idempotent, never throws
 installShutdownHandlers(); // once at startup; flushes the queue on SIGTERM/SIGINT
 ```
 
-The full API surface (no other exports exist):
+The product-events API surface (the tracing exports are in
+[typescript-tracing.md](typescript-tracing.md)):
 
 ```ts
 function init(overrides?: { apiKey?: string; eventsEndpoint?: string; enabled?: boolean }): void;

@@ -8,7 +8,7 @@ Full SDK documentation: [docs.neosigma.ai](https://docs.neosigma.ai)
 
 | Skill                                   | Description                                                                                                                                                                       |
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [integrate-sdk](./skills/integrate-sdk) | Integrate the NeoSigma SDK: agent tracing (Python), product events (TypeScript), auto-instrumentation, and dual export with an existing OpenTelemetry setup, correlated per turn. |
+| [integrate-sdk](./skills/integrate-sdk) | Integrate the NeoSigma SDK: agent tracing (Python and TypeScript), product events (TypeScript), framework adapters (Vercel AI SDK, LangChain, Claude Agent SDK, Managed Agents), and dual export with an existing OpenTelemetry setup, correlated per turn. |
 
 ## Installation
 
@@ -72,9 +72,9 @@ Without a key the SDK is a no-op, so instrumentation is safe to merge before key
 
 Once installed, your agent can use this skill when you ask it to:
 
-- Add NeoSigma tracing to a Python agent or workflow
+- Add NeoSigma tracing to a Python or TypeScript/Node agent or workflow
+- Trace the Vercel AI SDK or LangChain, the Claude Agent SDK, or Anthropic Managed Agents
 - Send product events from a TypeScript/Node app, correlated to the agent trace by turn
-- Auto-instrument raw Anthropic/OpenAI clients, the Claude Agent SDK, or Anthropic Managed Agents
 - Add a FastAPI/Starlette middleware that opens a turn per request
 - Dual-export to NeoSigma alongside an existing OpenTelemetry backend
 - Verify that traces and events reached NeoSigma

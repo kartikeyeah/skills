@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "neosigma",
-      "description": "Skill for integrating the NeoSigma SDK: agent tracing (Python) and product events (TypeScript), correlated per turn.",
+      "description": "Skill for integrating the NeoSigma SDK: agent tracing (Python and TypeScript), framework adapters, and product events, correlated per turn.",
       "version": "1.0.0",
       "source": "./",
       "category": "developer-tools"
