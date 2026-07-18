@@ -32,10 +32,43 @@ Find, in this order:
 rg -n "from \"ai\"|@ai-sdk|@langchain|claude-agent-sdk|@anthropic-ai/sdk|setGlobalTracerProvider|NodeTracerProvider|experimental_telemetry" .
 ```
 
-Runtime facts: the SDK is ESM and ships OpenTelemetry JS 2.x, which requires
-Node 18.19+ or 20.6+. It runs under Bun (verified on Bun 1.3). On CommonJS,
-load it in an async context with `const neosigma = await import("neosigma-sdk")`
-(top-level `await` is not available in CommonJS).
+Runtime facts: the SDK ships both ESM and CommonJS entrypoints and uses
+OpenTelemetry JS 2.x, which requires Node 18.19+ or 20.6+. It runs under Bun
+(verified on Bun 1.3). Use the codebase's native module style:
+
+```ts
+// ESM
+import { init, turn } from "neosigma-sdk";
+
+// CommonJS
+const { init, turn } = require("neosigma-sdk");
+```
+
+### Next.js (Node runtime only)
+
+Use the SDK only in Node.js server code: route handlers, server actions, server
+components with `export const runtime = "nodejs"`, jobs, or the Next
+`instrumentation.ts` hook. Do not import it from client components, middleware,
+or routes configured for the Edge runtime.
+
+Initialize once in `instrumentation.ts`; the runtime guard keeps the Node-only
+OpenTelemetry dependencies out of Edge builds:
+
+```ts
+// instrumentation.ts
+export async function register() {
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    const { init, installShutdownHandlers } = await import("neosigma-sdk");
+    init();
+    installShutdownHandlers();
+  }
+}
+```
+
+Then import `turn`, adapters, and event helpers normally from
+`"neosigma-sdk"` in the Node.js code path that runs the agent. Finish by
+running `next build`; an integration is not complete until that production
+build and one instrumented request succeed.
 
 ## 2. Install and lifecycle
 

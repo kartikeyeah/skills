@@ -46,8 +46,9 @@ reached NeoSigma.
    environments that lack one.
 7. **Verify with evidence, not code review.** Finish by running one real
    request and confirming the trace in NeoSigma (or spans on stdout via
-   console export locally). Instrumentation that has not produced a visible
-   trace is not done.
+   console export locally). For Next.js, also run `next build` after the
+   integration and keep the SDK out of client and Edge code. Instrumentation
+   that has not produced a visible trace is not done.
 
 ## Workflow
 

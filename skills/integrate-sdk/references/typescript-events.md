@@ -17,9 +17,13 @@ https://docs.neosigma.ai/sdk/events rather than guessing.
   The TypeScript `turnId` must equal the Python `turn_id` verbatim.
 - Runtime shape: long-running server, serverless, or CLI (decides the flush
   strategy in section 4).
-- Module system: the SDK is ESM-only and needs Node 18+. On CommonJS, load it
-  inside an async context with `const neosigma = await import("neosigma-sdk")`
-  (top-level `await` is not available in CommonJS).
+- Module system: the SDK supports both ESM and CommonJS on Node 18.19+ or
+  20.6+. Use `import { capture } from "neosigma-sdk"` in ESM or
+  `const { capture } = require("neosigma-sdk")` in CommonJS.
+- Next.js: emit events only from Node.js server code, never client components,
+  middleware, or Edge routes. Initialize the SDK in the Node branch of
+  `instrumentation.ts` as shown in [typescript-tracing.md](typescript-tracing.md),
+  then run `next build` before declaring the integration complete.
 
 ## 2. Install and lifecycle
 
