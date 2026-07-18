@@ -2,9 +2,8 @@
 
 Instrument a TypeScript/Node codebase with the npm package `neosigma-sdk` so
 agent runs land in NeoSigma as traces. This file is the API surface of record
-for the TypeScript SDK (0.5.x). Parameters and exports not listed here do not
-exist. If something seems missing, check https://docs.neosigma.ai/sdk/tracing
-rather than guessing.
+for the TypeScript SDK (0.5.1 or later). Parameters and exports not listed here do not
+exist. If something is missing, stop rather than guessing.
 
 The TypeScript SDK does full agent tracing (turns, framework adapters, dual
 export), not only product events. Product events (`capture`/`identify`) are in
@@ -25,6 +24,8 @@ Find, in this order:
   construction or `trace.setGlobalTracerProvider(...)`. This decides section 5.
 - The app's own ids: conversation id, end-user id, and any per-request or
   per-run id (these become `sessionId`, `distinctId`, `turnId`).
+- Whether captured prompts, completions, or tool payloads contain sensitive
+  data. Set content capture accordingly (section 7).
 - Runtime and module system: long-running server, serverless, or CLI (decides
   the flush strategy, section 2); ESM vs CommonJS; Node or Bun.
 
@@ -33,8 +34,8 @@ rg -n "from \"ai\"|@ai-sdk|@langchain|claude-agent-sdk|@anthropic-ai/sdk|setGlob
 ```
 
 Runtime facts: the SDK ships both ESM and CommonJS entrypoints and uses
-OpenTelemetry JS 2.x, which requires Node 18.19+ or 20.6+. It runs under Bun
-(verified on Bun 1.3). Use the codebase's native module style:
+OpenTelemetry JS 2.x, which requires Node `^18.19.0 || >=20.6.0`. Use the
+codebase's native module style:
 
 ```ts
 // ESM
@@ -72,7 +73,7 @@ build and one instrumented request succeed.
 ## 2. Install and lifecycle
 
 ```bash
-npm install neosigma-sdk
+npm install neosigma-sdk@^0.5.1
 ```
 
 ```ts
@@ -99,13 +100,14 @@ function init(overrides?: {
   extraSpanProcessors?: SpanProcessor[]; // dual export, section 5
   settings?: Partial<Settings>;        // any other setting by its camelCase name
 }): void;
+function initAsync(overrides?: Parameters<typeof init>[0]): Promise<void>;
 ```
 
 - `init()` is idempotent and fail-open. It never throws into app startup; on any
   failure it degrades to inactive and the app runs unchanged.
-- Without an API key (and without `consoleExport`) every SDK call is a no-op, so
-  the integration is safe to merge before keys are provisioned. Ids are still
-  generated and the app runs normally.
+- Without an API key (and without `consoleExport`) no telemetry pipeline is
+  initialized and nothing is sent. Ids are still generated and wrapped
+  application calls run normally.
 - `otelEndpoint` is the FULL OTLP path. Its default is
   `https://otel.neosigma.ai/v1/traces`. If you set it from a base URL, append
   `/v1/traces` yourself, or exports 404.
@@ -208,7 +210,9 @@ class Turn {
 There is NO `setOutput`, `setInput`, or `end` method. Use `startTurn()` for a
 lifecycle a single callback cannot wrap (open in one function, `finish()` in
 another); guard the work between so `finish()` still runs, or the span leaks
-unfinished.
+unfinished. SDK helpers nest under a `startTurn()` handle, but unrelated
+OpenTelemetry libraries do not inherit its context. Prefer callback `turn()`
+when it can wrap the work.
 
 Opening a `turn()` inside an active turn does not fork a second trace; it opens
 a child span reusing the outer ids, so wrapping is safe.
@@ -218,27 +222,42 @@ turn around uninstrumented work is a root span with no children.
 
 ## 4. Capture model and tool calls (pick per component)
 
-Prefer the adapters below when the app uses a supported framework: they make
-the integration explicit and do not patch the provider library. For a raw
-Anthropic, OpenAI, or LangChain client, optional auto-instrumentation is also
-available. Install only the instrumentor that matches the client's package,
-then enable it at startup:
+Choose exactly one capture path for each model call. When the app uses a
+supported framework, use its explicit adapter below. For direct calls through
+the raw `openai` or `@anthropic-ai/sdk` client, install only the matching
+instrumentor and enable auto-instrumentation at startup:
 
 ```bash
 npm install @traceloop/instrumentation-anthropic # @anthropic-ai/sdk
 npm install @traceloop/instrumentation-openai    # openai
-npm install @traceloop/instrumentation-langchain # @langchain/core
 ```
 
-```ts
-import { init } from "neosigma-sdk";
+Initialize the instrumentor before loading the raw provider client so its Node
+module hook is ready first. Bundlers require a runtime-specific recipe; the
+tested Next.js path is below.
 
-init({ tracingEnabled: true });
+```ts
+import { initAsync } from "neosigma-sdk";
+
+await initAsync({ tracingEnabled: true });
+const { default: OpenAI } = await import("openai");
+const client = new OpenAI();
 ```
 
 The SDK skips a provider that is not installed. If it finds a supported client
 but not its matching instrumentor, it warns with the exact `npm install`
 command and leaves the application running normally.
+
+Do not enable an auto-instrumentor and an explicit adapter around the same
+call. That records the call twice. In particular, use the LangChain callback
+below for LangChain calls; do not add LangChain auto-instrumentation as well.
+
+For a raw OpenAI client in Next.js, add `openai` and
+`@traceloop/instrumentation-openai` to `serverExternalPackages`, import the
+instrumentor literally inside the Node branch of `instrumentation.ts`, then
+`await initAsync({ tracingEnabled: true })`. This makes Next copy the optional
+runtime dependency graph into standalone deployments. Use the matching
+Anthropic package names for a raw Anthropic client.
 
 ### 4a. Vercel AI SDK
 
@@ -254,18 +273,16 @@ const { generateText, streamText } = wrapAISDK(ai);
 
 `wrapAISDK(ai)` returns wrapped `generateText`, `streamText`, `generateObject`,
 and `streamObject` that enable the AI SDK's telemetry per call. Use them exactly
-like the originals; each call emits `chat` / `invoke_agent` / `agent_step` spans
-under the active turn, with token usage on canonical `gen_ai.usage.*` keys.
+like the originals; the AI SDK's telemetry spans nest under the active turn,
+with token usage on canonical `gen_ai.usage.*` keys. An explicit
+`experimental_telemetry` option at a call site always wins, including
+`{ isEnabled: false }`.
 
 **Pitfall (ai v7): telemetry is a separate package.** As of ai v7, span emission
 moved into `@ai-sdk/otel`. Without `registerTelemetry(new OpenTelemetry())` at
 startup, the AI SDK emits ZERO spans and no warning, even though `wrapAISDK` ran
 correctly. Install `@ai-sdk/otel` and call `registerTelemetry` once. `wrapAISDK`
 enables the per-call flag but cannot perform the app-level registration.
-
-Note: on ai v7 the same usage lands on both the leaf `chat` span and the
-`invoke_agent` aggregate span, so a naive sum across a trace double-counts
-tokens. This is a reporting characteristic, not a wrapper bug; do not strip it.
 
 ### 4b. LangChain
 
@@ -298,7 +315,7 @@ import { traceClaude, wrapClaudeQuery } from "neosigma-sdk";
 
 for await (const message of traceClaude(query({ prompt }))) { ... }
 // Or a reusable drop-in that wraps query():
-const tracedQuery = wrapClaudeQuery();
+const tracedQuery = wrapClaudeQuery(query);
 ```
 
 `traceClaude` wraps the message stream from `query(...)`; iterate the wrapped
@@ -405,6 +422,7 @@ const provider = new NodeTracerProvider({
   ],
 });
 provider.register(); // app's own setup
+// Before process exit: await provider.forceFlush() or provider.shutdown().
 ```
 
 This shape exports spans created through the app's provider. SDK-native
@@ -413,10 +431,9 @@ shape above.
 
 Key facts, several verified live:
 
-- Install the exporter packages you reference: `@opentelemetry/exporter-trace-otlp-proto`
-  (protobuf; NeoSigma ingest and most backends require protobuf, not JSON),
-  `@opentelemetry/sdk-trace-base` (`BatchSpanProcessor`), and
-  `@opentelemetry/sdk-trace-node` (`NodeTracerProvider`) for the attach shape.
+- The OpenTelemetry packages above are NeoSigma dependencies, but strict
+  package managers such as pnpm require direct declarations for packages your
+  application imports. Add those packages to the application when needed.
 - Requires OpenTelemetry JS 2.x. On 1.x the provider shape differs
   (`addSpanProcessor` exists) and attach behaves differently.
 - OpenTelemetry JS 2.x providers take processors at construction and have no
@@ -460,8 +477,8 @@ text per field and appends a `... [truncated, N chars omitted]` marker.
    without an API key proves shape, not delivery.
 2. With `NEOSIGMA_API_KEY` set, run one request, then check the traces page at
    https://app.neosigma.ai: one trace per user message; an `invoke_agent` root;
-   `chat` children with token usage; `execute_tool` children; the expected
-   `sessionId`/`turnId`/`distinctId`.
+   `chat` children with token usage; `execute_tool` children; and the expected
+   `neosigma.session_id`, `neosigma.turn_id`, and `neosigma.distinct_id`.
 3. Dual export: confirm the app's original backend still receives the same spans.
 
 Troubleshooting:

@@ -5,8 +5,8 @@ product events (user actions) flow into NeoSigma and join the agent traces for
 the same turn. This file covers the product-events surface of the TypeScript
 SDK; for agent tracing (turns, the framework adapters, dual export) use
 [typescript-tracing.md](typescript-tracing.md). Events and tracing run in one
-process and share one id model. If something seems missing, check
-https://docs.neosigma.ai/sdk/events rather than guessing.
+process and share one id model. If something is missing, stop rather than
+guessing.
 
 ## 1. Assess the codebase
 
@@ -17,8 +17,8 @@ https://docs.neosigma.ai/sdk/events rather than guessing.
   The TypeScript `turnId` must equal the Python `turn_id` verbatim.
 - Runtime shape: long-running server, serverless, or CLI (decides the flush
   strategy in section 4).
-- Module system: the SDK supports both ESM and CommonJS on Node 18.19+ or
-  20.6+. Use `import { capture } from "neosigma-sdk"` in ESM or
+- Module system: the SDK supports both ESM and CommonJS on Node
+  `^18.19.0 || >=20.6.0`. Use `import { capture } from "neosigma-sdk"` in ESM or
   `const { capture } = require("neosigma-sdk")` in CommonJS.
 - Next.js: emit events only from Node.js server code, never client components,
   middleware, or Edge routes. Initialize the SDK in the Node branch of
@@ -28,7 +28,7 @@ https://docs.neosigma.ai/sdk/events rather than guessing.
 ## 2. Install and lifecycle
 
 ```bash
-npm install neosigma-sdk
+npm install neosigma-sdk@^0.5.1
 ```
 
 ```ts
@@ -51,16 +51,19 @@ function shutdown(): Promise<void>;
 function installShutdownHandlers(): void;
 ```
 
-Env vars: `NEOSIGMA_API_KEY` (required to send; without it every call is a
-no-op), `NEOSIGMA_EVENTS_ENDPOINT` (default
-`https://otel.neosigma.ai/v1/events`), `NEOSIGMA_ENABLED` (default true).
+Env vars: `NEOSIGMA_API_KEY` (required to send), `NEOSIGMA_EVENTS_ENDPOINT`
+(default `https://otel.neosigma.ai/v1/events`), `NEOSIGMA_ENABLED` (default
+true), `NEOSIGMA_EVENTS_MAX_QUEUE` (default 10000),
+`NEOSIGMA_EVENTS_BATCH_SIZE` (default 100), and
+`NEOSIGMA_EVENTS_TIMEOUT_SECONDS` (default 10).
 
 ## 3. Bind the turn, emit events
 
 Wrap each request in a `trace()` scope carrying the same `turnId` the agent
 trace uses. Every `capture()` inside the scope, at any await depth, carries
-the ids. `identify()` must be called inside a scope (outside one it is
-dropped with a warning).
+the ids. Call `identify()` inside a scope so its `distinctId` remains bound for
+later events. Outside a scope the binding is dropped, but the `$identify` event
+is still emitted with an empty `distinct_id`.
 
 A `turn()` (the tracing side, see
 [typescript-tracing.md](typescript-tracing.md)) also binds these ids, so a
@@ -90,6 +93,8 @@ Rules that prevent silent data loss:
 - Property values must be scalars (string, finite number, boolean). Others
   are coerced (Date to ISO string, objects JSON-stringified) or dropped.
 - Do not emit event names starting with `$` (reserved).
+- An event outside a `trace()` or `turn()` scope is valid but has no turn to
+  join to.
 - Concurrency is safe via AsyncLocalStorage as long as each request has its
   own `trace()` scope; concurrent sub-tasks identifying different users need
   their own scopes.
@@ -116,3 +121,7 @@ the event appears in NeoSigma alongside the turn's trace (same `turn_id`).
 If events show but do not join a trace, compare the exact `turnId` string
 against the Python side's `turn_id` for that message; the join is verbatim
 string equality.
+
+`NEOSIGMA_CONSOLE_EXPORT=true` prints spans only. It does not verify product
+event delivery; event verification requires an API key and the NeoSigma
+dashboard.

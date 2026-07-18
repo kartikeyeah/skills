@@ -17,21 +17,21 @@ reached NeoSigma.
 
 1. **References first, memory never.** Read the matching reference file before
    writing any SDK call. Do not invent parameters, wrappers, or attribute
-   names beyond what the references state. If something seems missing, check
-   https://docs.neosigma.ai rather than guessing.
+   names beyond what the references state. If something is missing, stop rather
+   than guessing.
 2. **Instrument the real path.** Find the route, job, queue consumer, or CLI
    command that actually runs the agent, and instrument that. Do not build a
    parallel demo.
 3. **One turn per user message.** NeoSigma's unit is the turn: one user
    message plus everything the agent did in response, one trace, one
    `turn_id`. Map the app's own conversation id to `session_id`, its end-user
-   id to `distinct_id`, and reuse its own request/run id as `turn_id` when one
-   exists.
-4. **Prefer adapters and auto-instrumentation over manual spans.** If the app
-   uses Anthropic Managed Agents, the Claude Agent SDK, FastAPI, or raw
-   Anthropic/OpenAI clients, a wrapper or flag captures model and tool calls
-   with no per-call code. Reach for manual `@neosigma.tool()` spans only for
-   what remains.
+   id to `distinct_id`, and reuse its own request/run id as `turn_id` only when
+   that id is one-to-one with a user message.
+4. **Prefer supported integrations over manual spans.** Managed Agents, the
+   Claude Agent SDK, and raw Anthropic/OpenAI clients have dedicated capture
+   paths. FastAPI middleware opens the turn; a provider adapter or
+   auto-instrumentor captures model calls, and `tool()` captures remaining
+   tools.
 5. **Never break the existing telemetry.** If the app already configures
    OpenTelemetry, follow the matching reference's dual-export section exactly.
    In TypeScript with OTel JS 2.x, prefer NeoSigma's provider and pass the
@@ -41,8 +41,9 @@ reached NeoSigma.
 6. **Keys stay out of chat and out of code.** Ask the user to set
    `NEOSIGMA_API_KEY` (an `ns_live_...` key from Settings > Developer > API
    Keys) in their environment. Never paste a key into a file or a message.
-   Without a key the SDKs are no-ops, so merged instrumentation is safe in
-   environments that lack one.
+   Without a key there is no network export, so merged instrumentation is safe
+   in environments that lack one. Console span export remains available for
+   local shape verification.
 7. **Verify with evidence, not code review.** Finish by running one real
    request and confirming the trace in NeoSigma (or spans on stdout via
    console export locally). For Next.js, also run `next build` after the
@@ -52,7 +53,8 @@ reached NeoSigma.
 ## Workflow
 
 0. **Route by language and surface.** Both SDKs do full agent tracing; the
-   TypeScript SDK also emits product events. Agent traces from Python: use
+   TypeScript workflow in this skill also covers product events. Agent traces
+   from Python: use
    [references/python-tracing.md](references/python-tracing.md). Agent traces
    from TypeScript/Node: use
    [references/typescript-tracing.md](references/typescript-tracing.md).
@@ -63,9 +65,9 @@ reached NeoSigma.
    agent code is in neither language, say so and stop; do not improvise an SDK.
 1. **Assess the codebase** per the matching reference's section 1 (execution
    path, LLM surface, existing OpenTelemetry, the app's own ids).
-2. **Instrument** following the reference exactly: lifecycle first
-   (`init`/`shutdown`), then the capture surface per component, then id
-   correlation.
+2. **Instrument** following the reference exactly: preserve any existing
+   OpenTelemetry provider first, then add SDK lifecycle, the capture surface
+   per component, and id correlation.
 3. **Run one real request and verify** per the reference's verification
    section. Fix until the trace (and events, if any) are visible.
 4. **Report** using the output format below.
@@ -124,7 +126,7 @@ the SDK warns and stays dark next to an existing provider. Verify both
 destinations still receive data.
 
 **Edge case: no key available in the session.** The user has not provisioned
-an API key. Complete the instrumentation anyway (the SDK is a no-op without a
-key, so nothing breaks), verify shape locally with
+an API key. Complete the instrumentation anyway (nothing is sent to NeoSigma
+without a key), verify span shape locally with
 `NEOSIGMA_CONSOLE_EXPORT=true`, and tell the user which env var to set in each
 environment to turn exporting on.
