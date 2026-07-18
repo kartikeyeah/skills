@@ -58,9 +58,8 @@ OpenTelemetry dependencies out of Edge builds:
 // instrumentation.ts
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
-    const { init, installShutdownHandlers } = await import("neosigma-sdk");
+    const { init } = await import("neosigma-sdk");
     init();
-    installShutdownHandlers();
   }
 }
 ```
@@ -91,8 +90,8 @@ The `init` options (no other keys exist; there is NO `tracer`, `instrument`, or
 function init(overrides?: {
   apiKey?: string;
   project?: string;
-  tracingEnabled?: boolean;            // auto-instrumentation flag; a NO-OP in 0.5.0 (section 4)
-  attachToExistingProvider?: boolean;  // dual export, section 5
+  tracingEnabled?: boolean;            // optional raw-client auto-instrumentation (section 4)
+  attachToExistingProvider?: boolean;  // legacy OTel JS 1.x providers, section 5
   eventsEndpoint?: string;
   otelEndpoint?: string;               // MUST be the full path ending /v1/traces
   consoleExport?: boolean;
@@ -219,9 +218,27 @@ turn around uninstrumented work is a root span with no children.
 
 ## 4. Capture model and tool calls (pick per component)
 
-Auto-instrumentation by library patching (`init({ tracingEnabled: true })`) is
-NOT active in 0.5.0: the flag warns and does nothing. Use the adapters below,
-which is the supported path today.
+Prefer the adapters below when the app uses a supported framework: they make
+the integration explicit and do not patch the provider library. For a raw
+Anthropic, OpenAI, or LangChain client, optional auto-instrumentation is also
+available. Install only the instrumentor that matches the client's package,
+then enable it at startup:
+
+```bash
+npm install @traceloop/instrumentation-anthropic # @anthropic-ai/sdk
+npm install @traceloop/instrumentation-openai    # openai
+npm install @traceloop/instrumentation-langchain # @langchain/core
+```
+
+```ts
+import { init } from "neosigma-sdk";
+
+init({ tracingEnabled: true });
+```
+
+The SDK skips a provider that is not installed. If it finds a supported client
+but not its matching instrumentor, it warns with the exact `npm install`
+command and leaves the application running normally.
 
 ### 4a. Vercel AI SDK
 
@@ -370,16 +387,29 @@ init({
 // await shutdown() drains both legs; no separate flush of the extra processor needed.
 ```
 
-**Attach to the app's existing provider.** If the app already builds and sets
-its own provider, set `attachToExistingProvider: true` and call `init()` AFTER
-the app's `setGlobalTracerProvider(...)`:
+Use this shape only when the app can adopt NeoSigma's provider defaults. If its
+current provider customizes the resource, sampler, span limits, context manager,
+or propagator, do not replace that configuration: use the app-owned shape below
+and note its SDK-wrapper limitation.
+
+**The app owns an OTel JS 2.x provider.** Add NeoSigma's processor when the app
+constructs that provider; do not call `init({ attachToExistingProvider: true })`
+because OTel JS 2.x providers cannot accept processors after construction:
 
 ```ts
 import { NeoSigmaSpanProcessor } from "neosigma-sdk";
-const provider = new NodeTracerProvider({ spanProcessors: [new NeoSigmaSpanProcessor()] });
-provider.register(); // app's own setup, FIRST
-init({ attachToExistingProvider: true });
+const provider = new NodeTracerProvider({
+  spanProcessors: [
+    new NeoSigmaSpanProcessor(process.env.NEOSIGMA_API_KEY!),
+    // the existing backend's processor
+  ],
+});
+provider.register(); // app's own setup
 ```
+
+This shape exports spans created through the app's provider. SDK-native
+`turn()`/`tool()` wrappers and adapters require the NeoSigma-owned-provider
+shape above.
 
 Key facts, several verified live:
 
@@ -397,9 +427,9 @@ Key facts, several verified live:
   foreign attribute names (for example the AI SDK's) on its own export leg only,
   using a cloned view, so the other backend is unaffected regardless of which
   exporter flushes first.
-- Any source works through dual export: native `turn()`/`tool()`, the AI SDK, and
-  LangChain all fan out to both legs. AI SDK sources still need the section 4a
-  `registerTelemetry` step, or both legs get zero AI SDK spans.
+- With the NeoSigma-owned-provider shape, native `turn()`/`tool()`, the AI SDK,
+  and LangChain all fan out to both legs. AI SDK sources still need the section
+  4a `registerTelemetry` step, or both legs get zero AI SDK spans.
 
 ## 6. Concurrency and cross-process continuity
 
@@ -443,10 +473,10 @@ Troubleshooting:
 | AI SDK calls produce zero spans | Missing `registerTelemetry(new OpenTelemetry())` from `@ai-sdk/otel` at startup (ai v7). `wrapAISDK` alone is not enough (section 4a). |
 | Claude single-shot `query({ prompt })` has a `chat` span but no turn | A single-shot query emits no user message, so no turn opens. Wrap it in an explicit `turn()` (section 4c). |
 | Span named `tool` / `interaction` instead of the function name | An inline anonymous arrow has no `.name`. Pass `{ name }` (section 4e). |
-| `init({ tracingEnabled: true })` does nothing | Auto-instrumentation is a no-op in 0.5.0. Use the section 4 adapters. |
+| `init({ tracingEnabled: true })` logs that an instrumentor is missing | Install the matching `@traceloop/instrumentation-*` package, or use the section 4 adapter. |
 | Exports 404 | `otelEndpoint` was set to a base URL. It must be the full path ending `/v1/traces` (section 2). |
 | Ingest returns 400 | A JSON OTLP exporter was used. Use `@opentelemetry/exporter-trace-otlp-proto` (protobuf). |
-| Attach mode: warning, no dual export | `attachToExistingProvider: true` against an OTel 2.x provider, or `init()` ran before the app set its provider. Construct `NeoSigmaSpanProcessor` into the provider, or reorder (section 5). |
+| Attach mode: warning, no dual export | OTel JS 2.x cannot add processors after construction. Use NeoSigma's provider with `extraSpanProcessors`, or construct `NeoSigmaSpanProcessor` into the app's provider if only its existing spans need export. For a legacy provider with `addSpanProcessor`, call `init()` after provider setup (section 5). |
 | Flat traces / spans missing a parent | The work is not inside an active turn (process/queue hop, or no `turn()`). Re-bind ids (section 6). |
 | Spans stop partway through a run | Process exited without flushing. Wire the section 2 lifecycle for the runtime shape. |
 

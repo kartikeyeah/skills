@@ -1,6 +1,6 @@
 ---
 name: integrate-sdk
-description: Integrates the NeoSigma SDKs into a codebase so traces and product events flow into NeoSigma. Activates on requests like "integrate NeoSigma", "add NeoSigma tracing to this app", "instrument this repo with neosigma-sdk", "get our traces into NeoSigma", "onboard this codebase to NeoSigma", "set up the NeoSigma SDK", "send product events to NeoSigma", "wire NeoSigma into our existing OpenTelemetry setup", or "dual export to NeoSigma and <backend>". Do NOT use for analyzing traces already in NeoSigma, building evals, or developing the NeoSigma platform itself.
+description: Integrates the NeoSigma SDKs into a codebase so traces and product events flow into NeoSigma. Activates on requests like "integrate NeoSigma", "add NeoSigma tracing to this app", "instrument this repo with neosigma-sdk", "get our traces into NeoSigma", "onboard this codebase to NeoSigma", "set up the NeoSigma SDK", "send product events to NeoSigma", "wire NeoSigma into our existing OpenTelemetry setup", or "dual export to NeoSigma and another backend". Do NOT use for analyzing traces already in NeoSigma, building evals, or developing the NeoSigma platform itself.
 ---
 
 # Integrate the NeoSigma SDK
@@ -33,12 +33,11 @@ reached NeoSigma.
    with no per-call code. Reach for manual `@neosigma.tool()` spans only for
    what remains.
 5. **Never break the existing telemetry.** If the app already configures
-   OpenTelemetry, dual export is an explicit opt-in, called AFTER the app's own
-   provider setup: `attach_to_existing_provider=True` in Python,
-   `attachToExistingProvider: true` (or `extraSpanProcessors` when NeoSigma owns
-   the provider) in TypeScript. Without it the SDK warns and stays disabled next
-   to an existing provider rather than replacing it. Both backends keep receiving
-   every span. Follow the dual-export section of the matching reference exactly.
+   OpenTelemetry, follow the matching reference's dual-export section exactly.
+   In TypeScript with OTel JS 2.x, prefer NeoSigma's provider and pass the
+   existing backend processor through `extraSpanProcessors`. Never replace an
+   existing provider without preserving its processors and provider-level
+   configuration; verify both destinations.
 6. **Keys stay out of chat and out of code.** Ask the user to set
    `NEOSIGMA_API_KEY` (an `ns_live_...` key from Settings > Developer > API
    Keys) in their environment. Never paste a key into a file or a message.
