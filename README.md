@@ -1,6 +1,6 @@
 # NeoSigma Skills
 
-[Agent Skills](https://github.com/anthropics/skills) that teach AI coding assistants how to work with [NeoSigma](https://neosigma.ai): instrument a codebase with the NeoSigma SDK so agent runs land as traces and product events join them.
+[Agent Skills](https://github.com/anthropics/skills) that teach AI coding assistants how to work with [NeoSigma](https://neosigma.ai): instrument a codebase with the NeoSigma SDK so agent runs land as traces and product events join them, and import a codebase's existing checks into NeoSigma as verifiers.
 
 Full SDK documentation: [docs.neosigma.ai](https://docs.neosigma.ai)
 
@@ -9,6 +9,7 @@ Full SDK documentation: [docs.neosigma.ai](https://docs.neosigma.ai)
 | Skill                                   | Description                                                                                                                                                                       |
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [integrate-sdk](./skills/integrate-sdk) | Integrate the NeoSigma SDK: agent tracing (Python and TypeScript), product events (TypeScript), framework adapters (Vercel AI SDK, LangChain, Claude Agent SDK, Managed Agents), and dual export with an existing OpenTelemetry setup, correlated per turn. |
+| [import-verifiers](./skills/import-verifiers) | Import a codebase's existing quality checks (LLM-as-judge evals, scorers, qualitative assertions) into NeoSigma as verifiers through the NeoSigma MCP, skipping mechanical checks a trace-only judge can't reproduce. |
 
 ## Installation
 
@@ -70,7 +71,7 @@ Without a key the SDK is a no-op, so instrumentation is safe to merge before key
 
 ## Usage
 
-Once installed, your agent can use this skill when you ask it to:
+Once installed, your agent can use these skills when you ask it to:
 
 - Add NeoSigma tracing to a Python or TypeScript/Node agent or workflow
 - Trace the Vercel AI SDK or LangChain, the Claude Agent SDK, or Anthropic Managed Agents
@@ -78,3 +79,4 @@ Once installed, your agent can use this skill when you ask it to:
 - Add a FastAPI/Starlette middleware that opens a turn per request
 - Dual-export to NeoSigma alongside an existing OpenTelemetry backend
 - Verify that traces and events reached NeoSigma
+- Import your existing evals or judge checks into NeoSigma as verifiers
