@@ -42,7 +42,7 @@ neosigma.shutdown()    # once at process exit; flushes buffered spans
 ```
 
 The exact `init` signature (no other keyword arguments exist; there is NO
-`tracer_provider`, `instrument`, or `endpoint` argument):
+`instrument` or `endpoint` argument):
 
 ```python
 def init(
@@ -50,7 +50,8 @@ def init(
     *,
     project: str | None = None,
     tracing_enabled: bool | None = None,           # auto-instrumentation flag ONLY
-    attach_to_existing_provider: bool | None = None,  # dual export, section 5
+    private_provider: bool | None = None,          # default True; False owns the global (section 5)
+    tracer_provider: TracerProvider | None = None, # handoff: emit through a provider you built (section 5)
     settings: Settings | None = None,              # full config object, fields below
 ) -> None
 ```
@@ -66,15 +67,17 @@ def init(
   `finally` do not run on an unhandled SIGTERM; in workers and containers,
   convert SIGTERM to a clean exit (e.g.
   `signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))`) so the flush runs.
-- `shutdown()` is terminal when the SDK owns the provider; call it at exit,
-  not mid-run.
+- Call `shutdown()` once at exit, not mid-run. In the default private mode it
+  is non-terminal: a later `init()` builds a fresh private provider and tracing
+  resumes. In own mode it is terminal (OTel allows the global to be set only
+  once). In handoff mode it touches neither the provider nor its processors.
 
 Settings fields / env vars (env prefix `NEOSIGMA_`): `api_key`, `project`
 (default `default`), `service_name` (defaults to project), `otel_endpoint`
 (default `https://otel.neosigma.ai/v1/traces`), `events_endpoint`
 (default `https://otel.neosigma.ai/v1/events`), `enabled` (default true),
-`tracing_enabled` (default false), `attach_to_existing_provider` (default
-false, env `NEOSIGMA_ATTACH_TO_EXISTING_PROVIDER`), `capture_content`
+`tracing_enabled` (default false), `private_provider` (default true, env
+`NEOSIGMA_PRIVATE_PROVIDER`), `capture_content`
 (default true),
 `max_content_chars` (default 24000), `console_export` (default false), plus
 OTel batch knobs `max_queue_size`/`max_export_batch_size`/
@@ -199,42 +202,64 @@ id in the `x-neosigma-turn-id` response header. Optional kwargs: an async
 to skip routes. It finishes turns without an output; use an explicit `turn()`
 or `@turn_handler` in the handler instead when the response must be captured.
 
-## 5. Existing OpenTelemetry: dual export
+## 5. Existing OpenTelemetry: coexistence and dual export
 
-Provider posture is EXPLICIT, controlled by `attach_to_existing_provider`
-(init kwarg or env `NEOSIGMA_ATTACH_TO_EXISTING_PROVIDER`, default false).
-Every mismatch logs a warning and stays disabled rather than guessing:
+By default (`private_provider=True`) the SDK builds its OWN dedicated
+`TracerProvider` and never registers it as the OTel global, so it runs
+alongside an existing OpenTelemetry setup without changing it and without
+capturing its spans. When the app already configures OpenTelemetry, the default
+is correct: call `neosigma.init()` as usual, with no flag. There is NO
+`attach_to_existing_provider` option; it was removed in 0.4.0.
 
-- **Default (`False`):** if no real global provider exists, the SDK creates
-  its own `TracerProvider` and installs it as the OTel global. If a real
-  provider is ALREADY set, the SDK does not touch it, warns ("a
-  TracerProvider is already configured, so NeoSigma is not attaching and
-  tracing stays dark"), and stays disabled.
-- **Attach (`True`):** the SDK adds its processors to the app's existing
-  provider (dual export). The app's own exporters keep receiving every span,
-  and NeoSigma additionally receives every span emitted through that
-  provider. Requires the provider to exist first: with the flag set and no
-  provider configured, the SDK warns and stays disabled. A provider without
-  a callable `add_span_processor` also warns and stays disabled.
+The SDK's own spans (`turn()`, `@tool`, the adapters) and the auto-instrumentors
+it scopes to its provider all reach NeoSigma under the private default, so the
+agent trace is complete. Only genuinely foreign spans (the app's HTTP/DB
+middleware) stay with the app's provider. Correlation to product events is by
+attribute (`turn_id`/`session_id`), not by a shared trace tree.
 
-So for an app with existing OpenTelemetry, dual export takes BOTH the flag
-and the ordering (app's provider first):
+Two non-default postures:
+
+- **Own the global** (`private_provider=False`, env
+  `NEOSIGMA_PRIVATE_PROVIDER=false`): register NeoSigma's provider as the OTel
+  global and capture every span in the process, including the app's other
+  instrumentation. If a real global provider is already set, the SDK does not
+  clobber it: it logs a one-time notice and runs a private provider alongside
+  instead. Tracing still works; it just does not capture the process-global
+  spans. (It never goes dark next to an existing provider.)
+- **Handoff** (`init(tracer_provider=provider)`): you build one provider and
+  NeoSigma emits through it, owning nothing. This is Python's dual-export path.
+
+### Dual export (Python: handoff)
+
+To send the agent trace to NeoSigma AND another backend, build one provider
+carrying NeoSigma's processors plus your backend's exporter, and hand it to
+`init(tracer_provider=...)`. Both processors are public exports. ORDER MATTERS:
+add `CorrelationSpanProcessor()` BEFORE `NeoSigmaSpanProcessor(api_key=...)`, so
+it stamps `turn_id`/`session_id` on span start before the export processor sees
+the span.
 
 ```python
-provider = TracerProvider(resource=...)
-provider.add_span_processor(BatchSpanProcessor(their_exporter))
-trace.set_tracer_provider(provider)   # app's setup, unchanged, FIRST
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from neosigma_sdk import CorrelationSpanProcessor, NeoSigmaSpanProcessor
 
-neosigma.init(attach_to_existing_provider=True)   # dual export
+provider = TracerProvider(resource=...)
+provider.add_span_processor(CorrelationSpanProcessor())                   # FIRST
+provider.add_span_processor(NeoSigmaSpanProcessor(api_key="ns_live_..."))  # THEN
+provider.add_span_processor(BatchSpanProcessor(their_exporter))           # your backend
+
+neosigma.init(tracer_provider=provider)   # wires the turn helpers + event sink
 ```
 
-The alternative posture also works: call `neosigma.init()` FIRST (no flag) so
-the SDK owns the global provider, then add the app's other exporter to that
-global provider. Pick one; do not mix.
+Registering the provider as the OTel global is optional; NeoSigma emits through
+the provider it was handed regardless, and correlation rides contextvars. Python
+has no `extra_span_processors` option (that is TypeScript-only), so handoff is
+the dual-export path. In handoff mode `shutdown()`/`flush()` touch neither the
+provider nor its processors; drain the provider you built yourself.
 
-In attached mode `shutdown()`/`flush()` touch only NeoSigma's own processors;
-the app's provider and exporters are left alone. The app's own HTTP/infra
-spans also reach NeoSigma in this mode; that is expected and benign.
+Migration note: pre-0.4.0 used `attach_to_existing_provider=True` for dual
+export. That option is removed. Passing it now raises `TypeError`. Use the
+handoff provider above.
 
 ## 6. Cross-process and worker continuity
 
@@ -284,9 +309,9 @@ Troubleshooting:
 | --- | --- |
 | Nothing in NeoSigma, no errors | No `NEOSIGMA_API_KEY` in that environment, or `NEOSIGMA_ENABLED=false`. The SDK is silent by design; set the key. |
 | Console spans print but platform is empty | Console export is on without a key (the SDK logs exactly this warning). Set the key. |
-| Log: "a TracerProvider is already configured ... tracing stays dark" | The app has its own OTel and the attach flag is off. Pass `attach_to_existing_provider=True` (section 5). |
-| Log: "attach_to_existing_provider=True but no TracerProvider is configured" | The flag is set but `init()` ran before the app's `set_tracer_provider`. Move `init()` after it, or drop the flag to let the SDK own the provider. |
-| Log: "no callable add_span_processor" | The installed provider is not a standard SDK `TracerProvider`. The SDK stays disabled; use one that accepts span processors. |
+| NeoSigma not capturing the app's other (HTTP/DB) spans | Working as intended. The default provider is private, so NeoSigma traces only what it instruments, not the host's other spans. To capture every span, own the global with `init(private_provider=False)` (section 5). |
+| `TypeError` on `init(attach_to_existing_provider=True)` | That option was removed in 0.4.0. For dual export, build a provider and use `init(tracer_provider=...)` (section 5). |
+| Agent trace not reaching the app's own backend | Under the private default NeoSigma's spans go only to NeoSigma. For dual export, use the handoff provider in section 5. |
 | Flat traces / spans missing a parent | The work is not running inside an active turn (thread/process hop, or no `turn()` opened). Re-bind ids per section 6. |
 | `query()` calls produce no spans | The stream was not wrapped. Wrap with `trace_claude`/`wrap_claude_query`; imports of `query` are never patched. |
 | Spans stop after some point in a run | Process exited without `shutdown()`; buffered spans were dropped. Wire section 2's lifecycle. |
