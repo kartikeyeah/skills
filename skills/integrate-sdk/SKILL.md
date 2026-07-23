@@ -32,14 +32,14 @@ reached NeoSigma.
    paths. FastAPI middleware opens the turn; a provider adapter or
    auto-instrumentor captures model calls, and `tool()` captures remaining
    tools.
-5. **Never break the existing telemetry.** If the app already configures
-   OpenTelemetry, follow the matching reference's dual-export section exactly.
-   In TypeScript the SDK builds its own private provider by default, so it runs
-   alongside the existing setup without changing it. Pass the other backend's
-   processor through `extraSpanProcessors` to also export NeoSigma's spans there.
-   In Python, attach to the app's existing provider per that reference. Either
-   way, do not replace or reorder the app's own OpenTelemetry setup, and verify
-   both destinations.
+5. **Never break the existing telemetry.** Both SDKs build their own private
+   provider by default, so NeoSigma runs alongside an existing OpenTelemetry
+   setup without changing it and without capturing its spans. Neither SDK has an
+   attach option. For dual export of the agent trace to the other backend too,
+   in TypeScript pass the other backend's processor through `extraSpanProcessors`
+   (or use the `tracerProvider` handoff); in Python use the `tracer_provider`
+   handoff per that reference. Either way, do not replace or reorder the app's
+   own OpenTelemetry setup, and verify both destinations.
 6. **Keys stay out of chat and out of code.** Ask the user to set
    `NEOSIGMA_API_KEY` (an `ns_live_...` key from Settings > Developer > API
    Keys) in their environment. Never paste a key into a file or a message.
@@ -77,7 +77,8 @@ reached NeoSigma.
 ## Use case references
 
 - Python tracing (turns, adapters, auto-instrumentation, FastAPI middleware,
-  dual export with an existing TracerProvider, lifecycle, verification):
+  the private-default provider and dual export via the `tracer_provider` handoff,
+  lifecycle, verification):
   [references/python-tracing.md](references/python-tracing.md)
 - TypeScript tracing (turns, the Vercel AI SDK / LangChain / Claude Agent SDK /
   Managed Agents adapters, the private-default provider and dual export via
@@ -118,16 +119,15 @@ from the request), and pass `neosigmaCallbackHandler()` in the LangChain
 or that path emits no spans. Run one request with `NEOSIGMA_CONSOLE_EXPORT=true` plus `await flush()`
 to see the spans, then confirm the trace in NeoSigma.
 
-**Edge case: existing OpenTelemetry (Python).** The app already installs its own
-TracerProvider exporting to another backend. Do not replace it and do not
-reorder its setup. Call `neosigma.init(attach_to_existing_provider=True)`
-AFTER the app's `trace.set_tracer_provider(...)` so the SDK attaches to that
-provider, and both backends keep receiving spans. Without the flag the SDK warns
-and stays dark next to an existing provider. Verify both destinations still
-receive data. In TypeScript there is no such flag. The SDK builds its own
-private provider by default and coexists with the app's OpenTelemetry
-automatically, so use `extraSpanProcessors` (or the `tracerProvider` handoff) for
-dual export.
+**Edge case: existing OpenTelemetry.** The app already installs its own
+TracerProvider exporting to another backend. Both SDKs build their own private
+provider by default and coexist with it automatically, no flag, without
+capturing its spans, so call `init()` as usual. There is no attach option
+(removed in both SDKs). For dual export of the agent trace to that backend too,
+in TypeScript pass `extraSpanProcessors` (or the `tracerProvider` handoff); in
+Python use the `tracer_provider` handoff, building one provider with
+`CorrelationSpanProcessor` before `NeoSigmaSpanProcessor` plus your exporter.
+Verify both destinations receive data.
 
 **Edge case: no key available in the session.** The user has not provisioned
 an API key. Complete the instrumentation anyway (nothing is sent to NeoSigma
