@@ -34,10 +34,12 @@ reached NeoSigma.
    tools.
 5. **Never break the existing telemetry.** If the app already configures
    OpenTelemetry, follow the matching reference's dual-export section exactly.
-   In TypeScript with OTel JS 2.x, prefer NeoSigma's provider and pass the
-   existing backend processor through `extraSpanProcessors`. Never replace an
-   existing provider without preserving its processors and provider-level
-   configuration; verify both destinations.
+   In TypeScript the SDK builds its own private provider by default, so it runs
+   alongside the existing setup without changing it. Pass the other backend's
+   processor through `extraSpanProcessors` to also export NeoSigma's spans there.
+   In Python, attach to the app's existing provider per that reference. Either
+   way, do not replace or reorder the app's own OpenTelemetry setup, and verify
+   both destinations.
 6. **Keys stay out of chat and out of code.** Ask the user to set
    `NEOSIGMA_API_KEY` (an `ns_live_...` key from Settings > Developer > API
    Keys) in their environment. Never paste a key into a file or a message.
@@ -78,8 +80,8 @@ reached NeoSigma.
   dual export with an existing TracerProvider, lifecycle, verification):
   [references/python-tracing.md](references/python-tracing.md)
 - TypeScript tracing (turns, the Vercel AI SDK / LangChain / Claude Agent SDK /
-  Managed Agents adapters, dual export via `extraSpanProcessors` or attach,
-  flush-by-runtime-shape, verification):
+  Managed Agents adapters, the private-default provider and dual export via
+  `extraSpanProcessors`, flush-by-runtime-shape, verification):
   [references/typescript-tracing.md](references/typescript-tracing.md)
 - TypeScript product events (capture/identify, binding turns, concurrency,
   serverless, shutdown): [references/typescript-events.md](references/typescript-events.md)
@@ -112,18 +114,20 @@ uses LangChain, with the Vercel AI SDK in one path. Read the TypeScript tracing
 reference. Call `init()` and `installShutdownHandlers()` at startup (long-running
 server), open a `turn()` per request in the chat route (session/user/message ids
 from the request), and pass `neosigmaCallbackHandler()` in the LangChain
-`callbacks`. For the AI SDK path, add `registerTelemetry(new OpenTelemetry())`
-from `@ai-sdk/otel` at startup and use `wrapAISDK(ai)`, or that path emits no
-spans. Run one request with `NEOSIGMA_CONSOLE_EXPORT=true` plus `await flush()`
+`callbacks`. For the AI SDK path, install `@ai-sdk/otel` and use `wrapAISDK(ai)`,
+or that path emits no spans. Run one request with `NEOSIGMA_CONSOLE_EXPORT=true` plus `await flush()`
 to see the spans, then confirm the trace in NeoSigma.
 
-**Edge case: existing OpenTelemetry.** The app already installs its own
+**Edge case: existing OpenTelemetry (Python).** The app already installs its own
 TracerProvider exporting to another backend. Do not replace it and do not
 reorder its setup. Call `neosigma.init(attach_to_existing_provider=True)`
 AFTER the app's `trace.set_tracer_provider(...)` so the SDK attaches to that
-provider (dual export: both backends keep receiving spans). Without the flag
-the SDK warns and stays dark next to an existing provider. Verify both
-destinations still receive data.
+provider, and both backends keep receiving spans. Without the flag the SDK warns
+and stays dark next to an existing provider. Verify both destinations still
+receive data. In TypeScript there is no such flag. The SDK builds its own
+private provider by default and coexists with the app's OpenTelemetry
+automatically, so use `extraSpanProcessors` (or the `tracerProvider` handoff) for
+dual export.
 
 **Edge case: no key available in the session.** The user has not provisioned
 an API key. Complete the instrumentation anyway (nothing is sent to NeoSigma

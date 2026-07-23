@@ -2,7 +2,7 @@
 
 Instrument a TypeScript/Node codebase with the npm package `neosigma-sdk` so
 agent runs land in NeoSigma as traces. This file is the API surface of record
-for the TypeScript SDK (0.5.1 or later). Parameters and exports not listed here do not
+for the TypeScript SDK (0.6.0 or later). Parameters and exports not listed here do not
 exist. If something is missing, stop rather than guessing.
 
 The TypeScript SDK does full agent tracing (turns, framework adapters, dual
@@ -73,7 +73,7 @@ build and one instrumented request succeed.
 ## 2. Install and lifecycle
 
 ```bash
-npm install neosigma-sdk@^0.5.1
+npm install neosigma-sdk@^0.6.0
 ```
 
 ```ts
@@ -92,7 +92,8 @@ function init(overrides?: {
   apiKey?: string;
   project?: string;
   tracingEnabled?: boolean;            // optional raw-client auto-instrumentation (section 4)
-  attachToExistingProvider?: boolean;  // legacy OTel JS 1.x providers, section 5
+  privateProvider?: boolean;           // default true, builds a private provider (section 5)
+  tracerProvider?: TracerProvider;     // hand NeoSigma a provider you built (section 5)
   eventsEndpoint?: string;
   otelEndpoint?: string;               // MUST be the full path ending /v1/traces
   consoleExport?: boolean;
@@ -116,8 +117,8 @@ Environment variables (prefix `NEOSIGMA_`, `SCREAMING_SNAKE_CASE`):
 `NEOSIGMA_API_KEY`, `NEOSIGMA_PROJECT` (default `default`),
 `NEOSIGMA_SERVICE_NAME` (defaults to project), `NEOSIGMA_OTEL_ENDPOINT`,
 `NEOSIGMA_EVENTS_ENDPOINT`, `NEOSIGMA_ENABLED` (default true),
-`NEOSIGMA_TRACING_ENABLED` (default false), `NEOSIGMA_ATTACH_TO_EXISTING_PROVIDER`
-(default false), `NEOSIGMA_CONSOLE_EXPORT` (default false),
+`NEOSIGMA_TRACING_ENABLED` (default false), `NEOSIGMA_PRIVATE_PROVIDER`
+(default true), `NEOSIGMA_CONSOLE_EXPORT` (default false),
 `NEOSIGMA_CAPTURE_CONTENT` (default true), `NEOSIGMA_MAX_CONTENT_CHARS`
 (default 24000), plus OTel batch knobs `NEOSIGMA_MAX_QUEUE_SIZE`,
 `NEOSIGMA_MAX_EXPORT_BATCH_SIZE`, `NEOSIGMA_SCHEDULE_DELAY_MILLIS`,
@@ -140,9 +141,11 @@ runtime shape:
   instance. `flush()` does not stop the SDK, so the next invocation still works.
 - **CLI / script:** `await shutdown()` at the end.
 
-`shutdown()` is terminal when the SDK owns the provider (the default): OpenTelemetry
-allows one global provider per process, so a later `init()` cannot restore tracing.
-Call `shutdown()` once at exit, never mid-run.
+Call `shutdown()` once at exit, never mid-run. In the default private mode a
+later `init()` rebuilds a fresh private provider, so tracing can resume. In own
+mode (section 5) a later `init()` cannot re-own the global (OpenTelemetry sets
+it once), so it falls back to a private provider. NeoSigma tracing resumes, but
+no longer captures process-global spans.
 
 ```ts
 function flush(): Promise<void>;
@@ -262,27 +265,53 @@ Anthropic package names for a raw Anthropic client.
 ### 4a. Vercel AI SDK
 
 ```ts
-import { registerTelemetry } from "ai";
-import { OpenTelemetry } from "@ai-sdk/otel";
 import { wrapAISDK } from "neosigma-sdk";
 import * as ai from "ai";
 
-registerTelemetry(new OpenTelemetry()); // REQUIRED once at startup on ai v7
 const { generateText, streamText } = wrapAISDK(ai);
 ```
 
 `wrapAISDK(ai)` returns wrapped `generateText`, `streamText`, `generateObject`,
-and `streamObject` that enable the AI SDK's telemetry per call. Use them exactly
-like the originals; the AI SDK's telemetry spans nest under the active turn,
-with token usage on canonical `gen_ai.usage.*` keys. An explicit
-`experimental_telemetry` option at a call site always wins, including
-`{ isEnabled: false }`.
+and `streamObject` that enable the AI SDK's telemetry per call and route it
+through NeoSigma's own tracer. Use them exactly like the originals; the AI SDK's
+telemetry spans nest under the active turn, with token usage on canonical
+`gen_ai.usage.*` keys. An explicit `experimental_telemetry` option at a call
+site always wins, including `{ isEnabled: false }`.
 
-**Pitfall (ai v7): telemetry is a separate package.** As of ai v7, span emission
-moved into `@ai-sdk/otel`. Without `registerTelemetry(new OpenTelemetry())` at
-startup, the AI SDK emits ZERO spans and no warning, even though `wrapAISDK` ran
-correctly. Install `@ai-sdk/otel` and call `registerTelemetry` once. `wrapAISDK`
-enables the per-call flag but cannot perform the app-level registration.
+**Pitfall (ai v7): install `@ai-sdk/otel`.** As of ai v7, span emission moved
+into `@ai-sdk/otel`. Install it, or the AI SDK emits no spans and `wrapAISDK`
+logs a one-time warning. `wrapAISDK` injects the `@ai-sdk/otel` integration
+pointed at NeoSigma's tracer on each call, so under the default private provider
+the spans reach NeoSigma without owning the global. Setting
+`experimental_telemetry: { isEnabled: true }` by hand, without `wrapAISDK`, does
+not reach NeoSigma under the private default.
+
+`wrapAISDK(ai)` may run before or after `init()`. It resolves NeoSigma's tracer
+on each call, not at wrap time, so create the wrapped functions once at module
+scope and reuse them across requests. You install `@ai-sdk/otel` but do not
+import it yourself; `wrapAISDK` loads it.
+
+For `streamText`/`streamObject`, consume the stream inside the `turn()` callback.
+`turn()` ends when its callback's promise settles, so returning an undrained
+stream closes the turn before the model spans finish. To stream to your client,
+write each delta as you consume it inside the callback; do not hand the undrained
+stream to a response helper that returns before it finishes, or the turn closes
+early.
+
+```ts
+import { turn } from "neosigma-sdk";
+
+await turn({ turnId, sessionId, userMessage }, async (t) => {
+  const result = streamText({ model, prompt: userMessage });
+  let output = "";
+  for await (const delta of result.textStream) output += delta;
+  t.finish({ output });
+});
+```
+
+If a `streamText`/`streamObject` call runs in the same synchronous tick as
+`wrapAISDK()`, `await preloadAISDK()` (exported from `neosigma-sdk`) first so that
+first stream's spans are captured; later calls self-heal.
 
 ### 4b. LangChain
 
@@ -307,6 +336,9 @@ token counts, not only OpenAI.
 
 Wrap the LangChain call in a `turn()` so the tree has a root and an id. Without
 a surrounding turn the chain spans are orphaned.
+
+The handler emits through NeoSigma's own tracer, so under the default private
+provider its spans reach NeoSigma without owning the global.
 
 ### 4c. Claude Agent SDK
 
@@ -377,13 +409,31 @@ const handleChat = turnHandler(
 for an inline arrow (`tool(async (q) => ...)` produces a span literally named
 `tool`). Pass `{ name }`, or wrap a named `function`.
 
-## 5. Existing OpenTelemetry: dual export
+## 5. Existing OpenTelemetry: coexistence and dual export
 
-Dual export sends every span to NeoSigma AND another OpenTelemetry backend at
-once. There are two shapes; pick one.
+`init()` needs an OpenTelemetry `TracerProvider` to emit spans. By default it
+builds a PRIVATE provider (NeoSigma's own, never registered as the process
+global), so NeoSigma runs alongside any existing OpenTelemetry setup (Sentry,
+Datadog, LangSmith, `opentelemetry-instrument`) with no change to that tool's
+configuration and without capturing that tool's spans. When the app already
+configures OpenTelemetry, the default is correct. Call `init()` as usual, with
+no flag. There is NO `attach` or `attachToExistingProvider` option.
 
-**The SDK owns the provider (recommended), extra processors ride alongside.**
-Pass the second backend as an `extraSpanProcessors` entry to `init()`:
+A private provider isolates NeoSigma's span processing and export from the
+host's. Each `turn()` opens its own trace with a fresh trace id (one trace per
+turn), so an agent trace is never grafted onto the host's trace tree.
+Correlation is by attribute. `turn_id` and `session_id` tie an agent's spans to
+your product events and group a conversation's turns, independent of trace ids.
+
+### Dual export: also send to another backend
+
+Dual export sends the spans NeoSigma emits to NeoSigma AND another OpenTelemetry
+backend at once. Add the other backend's span processor to the provider NeoSigma
+builds, via `extraSpanProcessors`. This works in the default private posture and
+in own mode (below). Everything this SDK emits (`turn()`, the wrappers, the
+adapters, auto-instrumented clients) then reaches both backends. OpenTelemetry
+JS 2.x providers accept span processors only at construction and have no
+`addSpanProcessor`, so this is how you add a second backend.
 
 ```ts
 import { init } from "neosigma-sdk";
@@ -404,49 +454,74 @@ init({
 // await shutdown() drains both legs; no separate flush of the extra processor needed.
 ```
 
-Use this shape only when the app can adopt NeoSigma's provider defaults. If its
-current provider customizes the resource, sampler, span limits, context manager,
-or propagator, do not replace that configuration: use the app-owned shape below
-and note its SDK-wrapper limitation.
+`extraSpanProcessors` ride NeoSigma's provider, so `flush()` and `shutdown()`
+cover them too. In the default private posture this exports the agent trace
+(what NeoSigma instruments) to both backends. To also hand another backend the
+host's non-agent spans, use own mode or the `tracerProvider` handoff below.
 
-**The app owns an OTel JS 2.x provider.** Add NeoSigma's processor when the app
-constructs that provider; do not call `init({ attachToExistingProvider: true })`
-because OTel JS 2.x providers cannot accept processors after construction:
+### Route everything through one provider you own
+
+To send spans through a single provider you construct, build it with
+`CorrelationSpanProcessor` and `NeoSigmaSpanProcessor` alongside your other
+backend's processor, and hand it to `init({ tracerProvider })`:
 
 ```ts
-import { NeoSigmaSpanProcessor } from "neosigma-sdk";
+import {
+  init,
+  CorrelationSpanProcessor,
+  NeoSigmaSpanProcessor,
+} from "neosigma-sdk";
+import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
+
 const provider = new NodeTracerProvider({
   spanProcessors: [
+    new CorrelationSpanProcessor(),
     new NeoSigmaSpanProcessor(process.env.NEOSIGMA_API_KEY!),
-    // the existing backend's processor
+    // your other backend's span processor
   ],
 });
-provider.register(); // app's own setup
-// Before process exit: await provider.forceFlush() or provider.shutdown().
+
+init({ tracerProvider: provider });
 ```
 
-This shape exports spans created through the app's provider. SDK-native
-`turn()`/`tool()` wrappers and adapters require the NeoSigma-owned-provider
-shape above.
+Include BOTH `CorrelationSpanProcessor` and `NeoSigmaSpanProcessor` in
+`spanProcessors`. OTel JS 2.x accepts processors only at construction, so
+NeoSigma cannot add them to a provider it did not build. If either is missing,
+spans are created but never reach NeoSigma. You construct the provider, so its
+resource, sampler, and span limits stay whatever you set. Passing
+`init({ tracerProvider })` also wires up NeoSigma's native helpers and
+product-event sink. Adding `NeoSigmaSpanProcessor` to a provider without calling
+`init()` exports spans but does not.
+
+### Own the process global (opt-in)
+
+`init({ privateProvider: false })` (or `NEOSIGMA_PRIVATE_PROVIDER=false`)
+registers NeoSigma's provider as the process global and captures every
+OpenTelemetry span in the process, including spans from other instrumented
+libraries. If another provider already owns the global, NeoSigma falls back to a
+private provider and leaves it untouched. Combine with `extraSpanProcessors` to
+fan every captured span out to a second backend.
 
 Key facts, several verified live:
 
 - The OpenTelemetry packages above are NeoSigma dependencies, but strict
   package managers such as pnpm require direct declarations for packages your
   application imports. Add those packages to the application when needed.
-- Requires OpenTelemetry JS 2.x. On 1.x the provider shape differs
-  (`addSpanProcessor` exists) and attach behaves differently.
-- OpenTelemetry JS 2.x providers take processors at construction and have no
-  `addSpanProcessor`. Passing `attachToExistingProvider: true` against a 2.x
-  provider logs a warning and does not attach. Construct `NeoSigmaSpanProcessor`
-  and pass it to the provider at construction, as above.
+- Requires OpenTelemetry JS 2.x, which takes span processors at construction and
+  has no `addSpanProcessor`. A second backend rides `extraSpanProcessors` or the
+  `tracerProvider` handoff rather than a post-init add.
+- Without an API key, and without `NEOSIGMA_CONSOLE_EXPORT=true`, the private and
+  own postures install no provider, so every span helper is a no-op. The
+  `tracerProvider` handoff is the exception. It emits through the caller's
+  provider even without a NeoSigma key, though spans reach NeoSigma only if that
+  provider carries `NeoSigmaSpanProcessor`.
 - The second backend receives every span exactly as emitted. NeoSigma normalizes
   foreign attribute names (for example the AI SDK's) on its own export leg only,
   using a cloned view, so the other backend is unaffected regardless of which
   exporter flushes first.
-- With the NeoSigma-owned-provider shape, native `turn()`/`tool()`, the AI SDK,
-  and LangChain all fan out to both legs. AI SDK sources still need the section
-  4a `registerTelemetry` step, or both legs get zero AI SDK spans.
+- With `extraSpanProcessors`, native `turn()`/`tool()`, the AI SDK, and LangChain
+  all fan out to both legs. AI SDK sources still need `@ai-sdk/otel` installed
+  (section 4a), or both legs get zero AI SDK spans.
 
 ## 6. Concurrency and cross-process continuity
 
@@ -487,13 +562,13 @@ Troubleshooting:
 | --- | --- |
 | Nothing in NeoSigma, no errors | No `NEOSIGMA_API_KEY` in that environment, or `NEOSIGMA_ENABLED=false`. The SDK is silent by design; set the key. |
 | Console export prints nothing on a short script | The process exited before the 5s batch flush. Add `await flush()` or `await shutdown()` before exit (section 2). |
-| AI SDK calls produce zero spans | Missing `registerTelemetry(new OpenTelemetry())` from `@ai-sdk/otel` at startup (ai v7). `wrapAISDK` alone is not enough (section 4a). |
+| AI SDK calls produce zero spans | On ai v7, `@ai-sdk/otel` is not installed. Install it; `wrapAISDK` injects it per call (section 4a). |
 | Claude single-shot `query({ prompt })` has a `chat` span but no turn | A single-shot query emits no user message, so no turn opens. Wrap it in an explicit `turn()` (section 4c). |
 | Span named `tool` / `interaction` instead of the function name | An inline anonymous arrow has no `.name`. Pass `{ name }` (section 4e). |
 | `init({ tracingEnabled: true })` logs that an instrumentor is missing | Install the matching `@traceloop/instrumentation-*` package, or use the section 4 adapter. |
 | Exports 404 | `otelEndpoint` was set to a base URL. It must be the full path ending `/v1/traces` (section 2). |
 | Ingest returns 400 | A JSON OTLP exporter was used. Use `@opentelemetry/exporter-trace-otlp-proto` (protobuf). |
-| Attach mode: warning, no dual export | OTel JS 2.x cannot add processors after construction. Use NeoSigma's provider with `extraSpanProcessors`, or construct `NeoSigmaSpanProcessor` into the app's provider if only its existing spans need export. For a legacy provider with `addSpanProcessor`, call `init()` after provider setup (section 5). |
+| NeoSigma not capturing another tool's spans | Working as intended. The default provider is private, so NeoSigma traces only what it instruments, not the host's other spans. To capture every span in the process, own the global with `init({ privateProvider: false })`. To also export NeoSigma's spans to that tool, add its processor via `extraSpanProcessors` (section 5). |
 | Flat traces / spans missing a parent | The work is not inside an active turn (process/queue hop, or no `turn()`). Re-bind ids (section 6). |
 | Spans stop partway through a run | Process exited without flushing. Wire the section 2 lifecycle for the runtime shape. |
 
