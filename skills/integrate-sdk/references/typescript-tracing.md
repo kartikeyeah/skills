@@ -502,7 +502,7 @@ libraries. If another provider already owns the global, NeoSigma falls back to a
 private provider and leaves it untouched. Combine with `extraSpanProcessors` to
 fan every captured span out to a second backend.
 
-Key facts, several verified live:
+Key facts:
 
 - The OpenTelemetry packages above are NeoSigma dependencies, but strict
   package managers such as pnpm require direct declarations for packages your

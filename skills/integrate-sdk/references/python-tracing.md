@@ -69,8 +69,10 @@ def init(
   `signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))`) so the flush runs.
 - Call `shutdown()` once at exit, not mid-run. In the default private mode it
   is non-terminal: a later `init()` builds a fresh private provider and tracing
-  resumes. In own mode it is terminal (OTel allows the global to be set only
-  once). In handoff mode it touches neither the provider nor its processors.
+  resumes. In own mode a later `init()` cannot re-own the global (OTel allows it
+  to be set only once) and falls back to a private provider, so tracing resumes
+  but no longer captures process-global spans. In handoff mode it touches
+  neither the provider nor its processors.
 
 Settings fields / env vars (env prefix `NEOSIGMA_`): `api_key`, `project`
 (default `default`), `service_name` (defaults to project), `otel_endpoint`
@@ -239,23 +241,29 @@ it stamps `turn_id`/`session_id` on span start before the export processor sees
 the span.
 
 ```python
+import os
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from neosigma_sdk import CorrelationSpanProcessor, NeoSigmaSpanProcessor
 
 provider = TracerProvider(resource=...)
-provider.add_span_processor(CorrelationSpanProcessor())                   # FIRST
-provider.add_span_processor(NeoSigmaSpanProcessor(api_key="ns_live_..."))  # THEN
-provider.add_span_processor(BatchSpanProcessor(their_exporter))           # your backend
+provider.add_span_processor(CorrelationSpanProcessor())                                # FIRST
+provider.add_span_processor(NeoSigmaSpanProcessor(api_key=os.environ["NEOSIGMA_API_KEY"]))  # THEN
+provider.add_span_processor(BatchSpanProcessor(their_exporter))                        # your backend
 
 neosigma.init(tracer_provider=provider)   # wires the turn helpers + event sink
 ```
 
+Everything the SDK produces rides this provider, so it all reaches both backends:
+`turn()`, `@tool`, the adapters, AND raw-client spans from
+`init(tracing_enabled=True, tracer_provider=provider)` (auto-instrumentation is
+pointed at the handed provider, so pass both arguments in the same `init()`).
 Registering the provider as the OTel global is optional; NeoSigma emits through
 the provider it was handed regardless, and correlation rides contextvars. Python
 has no `extra_span_processors` option (that is TypeScript-only), so handoff is
 the dual-export path. In handoff mode `shutdown()`/`flush()` touch neither the
-provider nor its processors; drain the provider you built yourself.
+provider nor its processors; drain the provider you built yourself with
+`provider.shutdown()`.
 
 Migration note: pre-0.4.0 used `attach_to_existing_provider=True` for dual
 export. That option is removed. Passing it now raises `TypeError`. Use the
@@ -292,7 +300,32 @@ metadata only (tokens, tool names, timings) and drops prompt/completion/tool
 IO text everywhere, including adapters and auto-instrumentation.
 `max_content_chars` (default 24000) truncates captured text per field.
 
-## 8. Verify
+## 8. Product events
+
+Alongside tracing, the Python SDK emits product events that join the agent trace
+on `turn_id`, so an app-side event (a click, a signup, a thumbs-up) sits next to
+the model spans for the same turn.
+
+- `capture(event_name, properties=None, *, turn_id=None)` records an event.
+  Called inside a `turn()` (or a `trace()` id-binding scope) it inherits that
+  scope's `turn_id`/`session_id`, so it joins that turn. Pass `turn_id=`
+  explicitly to attach an event to a specific turn from outside a scope.
+- `identify(distinct_id, properties=None)` attaches properties to an end user.
+
+```python
+with neosigma.turn(session_id=chat_id, distinct_id=user_id,
+                   turn_id=request_id, user_message=text):
+    reply = run_agent(text)
+    neosigma.capture("message_sent", {"length": len(reply)})  # joins this turn
+```
+
+`capture()` queues the event and returns; delivery is batched in the background
+to `NEOSIGMA_EVENTS_ENDPOINT`. Like tracing, it is a no-op without an API key.
+The queue is tuned by `NEOSIGMA_EVENTS_MAX_QUEUE` (default 10000),
+`NEOSIGMA_EVENTS_BATCH_SIZE` (default 100), and `NEOSIGMA_EVENTS_TIMEOUT_SECONDS`
+(default 10).
+
+## 9. Verify
 
 1. Locally, set `NEOSIGMA_CONSOLE_EXPORT=true` and run one real request:
    spans print to stdout. Console export without an API key logs a warning
