@@ -24,9 +24,13 @@ connected (see the NeoSigma docs for connecting it).
    testing, and write it as a standalone criterion. Do not paste, reference, or
    paraphrase source code, file names, functions, or variables. The judge never
    sees them.
-3. **State the pass and the fail.** Each verifier's instructions say what to
-   check, what a passing trace looks like, and what makes a trace fail. Keep it
-   to one criterion per verifier.
+3. **State the pass and the fail — one yes/no condition.** Each verifier's
+   instructions say what to check, what a passing trace looks like, and what
+   makes a trace fail. Keep it to one criterion per verifier. Do NOT bake a
+   scoring scale or rubric levels (1–5, 0–100, "partial credit", weightings)
+   into the instructions: NeoSigma scores every verifier on a single 0.0–1.0
+   scale — the judge's confidence that your condition holds — and a threshold
+   turns that into pass/fail. Write the condition, not the scoring.
 4. **Deduplicate first.** Call `list_verifiers` before creating anything and
    skip checks already covered by an existing verifier.
 5. **Report what you did.** After creating verifiers, tell the user which checks
@@ -47,8 +51,8 @@ connected (see the NeoSigma docs for connecting it).
 3. **Deduplicate.** Call `list_verifiers` and drop any check already covered.
 4. **Translate and create.** For each check to import, write a short kebab-case
    `judge` handle and self-contained `instructions` (what to check, passing
-   trace, failing trace, no code references), then call `create_verifier` once
-   per verifier.
+   trace, failing trace, one yes/no condition, no code references and no numeric
+   scale), then call `create_verifier` once per verifier.
 5. **Report** using the output format below.
 
 ## Output format
