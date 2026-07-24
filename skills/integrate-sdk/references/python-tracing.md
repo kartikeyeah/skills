@@ -58,8 +58,10 @@ def init(
 
 - `init()` is idempotent and fail-open. It never raises into app startup; on
   any failure it logs and stays disabled.
-- Without an API key every SDK call is a no-op, so the integration is safe to
-  merge before keys are provisioned.
+- Without an API key the SDK exports nothing to NeoSigma, so the integration is
+  safe to merge before keys are provisioned. (`console_export` still prints spans
+  locally, and a `tracer_provider` handoff still emits through your provider; only
+  the NeoSigma network sink is gated on the key.)
 - Wire `shutdown()` into process exit: `atexit.register(neosigma.shutdown)`,
   or a FastAPI `lifespan` handler, or the worker's finally block. In a
   long-running server call it once on graceful stop, never per request.

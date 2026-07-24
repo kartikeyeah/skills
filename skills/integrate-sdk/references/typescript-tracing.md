@@ -160,7 +160,6 @@ function isInitialized(): boolean;
 
 ```ts
 function turn<T>(opts: TurnOptions, fn: (t: Turn) => T): T;
-function startTurn(opts?: TurnOptions): Turn;
 
 interface TurnOptions {
   sessionId?: string;   // the conversation; generated sess_... if omitted
@@ -198,7 +197,7 @@ reply text). To record output, call `t.finish({ output })` before returning, or
 use `turnHandler` (section 4e), whose `outputFrom` records the return value by
 default.
 
-The `Turn` handle (from the callback, or from `startTurn()`):
+The `Turn` handle (passed into the callback):
 
 ```ts
 class Turn {
@@ -210,12 +209,14 @@ class Turn {
 }
 ```
 
-There is NO `setOutput`, `setInput`, or `end` method. Use `startTurn()` for a
-lifecycle a single callback cannot wrap (open in one function, `finish()` in
-another); guard the work between so `finish()` still runs, or the span leaks
-unfinished. SDK helpers nest under a `startTurn()` handle, but unrelated
-OpenTelemetry libraries do not inherit its context. Prefer callback `turn()`
-when it can wrap the work.
+There is NO `setOutput`, `setInput`, or `end` method, and no handle-form opener:
+`turn(opts, fn)` is callback-only (this keeps span nesting reliable across
+`await`). For work a single callback cannot wrap, for example a conversation
+whose turns open in separate request handlers, give each scope its own `turn()`
+and share a `sessionId`. One turn is one trace, and a conversation is a session
+of turns, so the scopes stay correlated through the shared session without a
+long-lived handle. To bind ids onto spans produced outside any `turn()`, use
+`trace({ turnId })` (section 6).
 
 Opening a `turn()` inside an active turn does not fork a second trace; it opens
 a child span reusing the outer ids, so wrapping is safe.
