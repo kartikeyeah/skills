@@ -54,17 +54,19 @@ reached NeoSigma.
 
 ## Workflow
 
-0. **Route by language and surface.** Both SDKs do full agent tracing; the
-   TypeScript workflow in this skill also covers product events. Agent traces
-   from Python: use
+0. **Route by language and surface.** Both SDKs do full agent tracing AND
+   product events. Agent traces from Python: use
    [references/python-tracing.md](references/python-tracing.md). Agent traces
    from TypeScript/Node: use
    [references/typescript-tracing.md](references/typescript-tracing.md).
-   Product events from TypeScript: use
+   Product events: Python's are in
+   [references/python-tracing.md](references/python-tracing.md) (section 8);
+   TypeScript's, with more depth, in
    [references/typescript-events.md](references/typescript-events.md). A
    full-stack app usually needs the tracing reference for its agent's language
-   plus the TypeScript events reference, correlated per principle 3. If the
-   agent code is in neither language, say so and stop; do not improvise an SDK.
+   plus the events reference for wherever events are emitted, correlated per
+   principle 3. If the agent code is in neither language, say so and stop; do
+   not improvise an SDK.
 1. **Assess the codebase** per the matching reference's section 1 (execution
    path, LLM surface, existing OpenTelemetry, the app's own ids).
 2. **Instrument** following the reference exactly: preserve any existing
@@ -78,7 +80,7 @@ reached NeoSigma.
 
 - Python tracing (turns, adapters, auto-instrumentation, FastAPI middleware,
   the private-default provider and dual export via the `tracer_provider` handoff,
-  lifecycle, verification):
+  product events via `capture()`/`identify()`, lifecycle, verification):
   [references/python-tracing.md](references/python-tracing.md)
 - TypeScript tracing (turns, the Vercel AI SDK / LangChain / Claude Agent SDK /
   Managed Agents adapters, the private-default provider and dual export via
