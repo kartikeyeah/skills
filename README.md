@@ -8,7 +8,7 @@ Full SDK documentation: [docs.neosigma.ai](https://docs.neosigma.ai)
 
 | Skill                                   | Description                                                                                                                                                                       |
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [integrate-sdk](./skills/integrate-sdk) | Integrate the NeoSigma SDK: agent tracing (Python and TypeScript), product events (TypeScript), framework adapters (Vercel AI SDK, LangChain, Claude Agent SDK, Managed Agents), and dual export with an existing OpenTelemetry setup, correlated per turn. |
+| [integrate-sdk](./skills/integrate-sdk) | Integrate the NeoSigma SDK: agent tracing (Python and TypeScript), product events (Python and TypeScript), framework adapters (Vercel AI SDK, LangChain, Claude Agent SDK, Managed Agents), and dual export with an existing OpenTelemetry setup, correlated per turn. |
 | [import-verifiers](./skills/import-verifiers) | Import a codebase's existing quality checks (LLM-as-judge evals, scorers, qualitative assertions) into NeoSigma as verifiers through the NeoSigma MCP, skipping mechanical checks a trace-only judge can't reproduce. |
 
 ## Installation
