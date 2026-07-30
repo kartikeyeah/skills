@@ -224,6 +224,34 @@ a child span reusing the outer ids, so wrapping is safe.
 `turn()` opens the root span only. Model and tool spans come from section 4. A
 turn around uninstrumented work is a root span with no children.
 
+### HTTP turn middleware (open a turn per request)
+
+To open the turn at the HTTP layer instead of calling `turn()` in each handler,
+wrap the server once. Both read `x-neosigma-session-id` and
+`x-neosigma-distinct-id` from the request and set the turn id on the
+`x-neosigma-turn-id` response header. Neither reads a client-supplied turn id, so
+a caller cannot write into another turn's trace.
+
+```ts
+import { expressTurnMiddleware, withTurn } from "neosigma-sdk";
+
+// Express: mount AFTER express.json() (messageExtractor reads req.body).
+app.use(expressTurnMiddleware({ messageExtractor: (req) => req.body?.message }));
+
+// Fetch-shaped handlers (Next.js App Router, Bun, Cloudflare Workers, Deno, Hono):
+export const POST = withTurn(handler, {
+  messageExtractor: async (req) => (await req.json()).message, // req is a clone
+  outputFrom: async (res) => (await res.json()).reply, // res is a clone
+});
+```
+
+`expressTurnMiddleware` marks the turn errored on a `>= 500` response. Pass
+`pathFilter(path)` to skip routes. `withTurn` wraps a `(Request) => Response`
+handler and cannot run in Next `middleware.ts`/`instrumentation.ts`, so wrap the
+route handler itself. Its `messageExtractor` and `outputFrom` receive clones, so
+reading their bodies does not disturb the handler. For Hono, wrap the raw
+request with `app.post("/chat", (c) => withTurn(handler)(c.req.raw))`.
+
 ## 4. Capture model and tool calls (pick per component)
 
 Choose exactly one capture path for each model call. When the app uses a
@@ -552,7 +580,7 @@ text per field and appends a `... [truncated, N chars omitted]` marker.
    `execute_tool`, each carrying a `neosigma.turn_id` attribute. Console export
    without an API key proves shape, not delivery.
 2. With `NEOSIGMA_API_KEY` set, run one request, then check the traces page at
-   https://app.neosigma.ai: one trace per user message; an `invoke_agent` root;
+   https://platform.neosigma.ai: one trace per user message; an `invoke_agent` root;
    `chat` children with token usage; `execute_tool` children; and the expected
    `neosigma.session_id`, `neosigma.turn_id`, and `neosigma.distinct_id`.
 3. Dual export: confirm the app's original backend still receives the same spans.
