@@ -206,6 +206,22 @@ id in the `x-neosigma-turn-id` response header. Optional kwargs: an async
 to skip routes. It finishes turns without an output; use an explicit `turn()`
 or `@turn_handler` in the handler instead when the response must be captured.
 
+### 4f. LangChain
+
+```python
+from neosigma_sdk.integrations.langchain import neosigma_callback_handler  # requires the [langchain] extra
+model = ChatAnthropic(model="claude-sonnet-4-6", callbacks=[neosigma_callback_handler()])
+```
+
+Pass the handler in any LangChain `callbacks` list (a model, chain, or agent
+constructor, or a single `.invoke()`). Every model call, tool call, and chain
+becomes a `chat`, `execute_tool`, or structural span, parented on LangChain's
+run tree. One handler instance is reusable across concurrent invocations. It
+does NOT open a turn, so wrap the top-level run in `turn()` for turn/session
+correlation. Do NOT also enable raw-client auto-instrumentation (4c) for a model
+that wraps an instrumented client (`langchain-anthropic` over `anthropic`,
+`langchain-openai` over `openai`), or each call is recorded twice.
+
 ## 5. Existing OpenTelemetry: coexistence and dual export
 
 By default (`private_provider=True`) the SDK builds its OWN dedicated
@@ -333,7 +349,7 @@ The queue is tuned by `NEOSIGMA_EVENTS_MAX_QUEUE` (default 10000),
    spans print to stdout. Console export without an API key logs a warning
    that nothing reaches NeoSigma; it proves shape, not delivery.
 2. With `NEOSIGMA_API_KEY` set, run one request, then check the traces page
-   at https://app.neosigma.ai. Confirm: one trace per user message; an
+   at https://platform.neosigma.ai. Confirm: one trace per user message; an
    `invoke_agent` root; `chat` children carrying token usage; `execute_tool`
    children for tools; the expected `session_id`/`turn_id`/`distinct_id`.
 3. Dual export: also confirm the app's original backend still receives spans.
