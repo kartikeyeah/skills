@@ -2,7 +2,7 @@
 
 Instrument a TypeScript/Node codebase with the npm package `neosigma-sdk` so
 agent runs land in NeoSigma as traces. This file is the API surface of record
-for the TypeScript SDK (0.6.0 or later). Parameters and exports not listed here do not
+for the TypeScript SDK (0.7.0 or later). Parameters and exports not listed here do not
 exist. If something is missing, stop rather than guessing.
 
 The TypeScript SDK does full agent tracing (turns, framework adapters, dual
@@ -73,7 +73,7 @@ build and one instrumented request succeed.
 ## 2. Install and lifecycle
 
 ```bash
-npm install neosigma-sdk@^0.6.0
+npm install neosigma-sdk@^0.7.0
 ```
 
 ```ts

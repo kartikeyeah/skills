@@ -28,7 +28,7 @@ guessing.
 ## 2. Install and lifecycle
 
 ```bash
-npm install neosigma-sdk@^0.6.0
+npm install neosigma-sdk@^0.7.0
 ```
 
 ```ts
