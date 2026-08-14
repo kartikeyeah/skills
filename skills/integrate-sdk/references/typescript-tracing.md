@@ -461,6 +461,12 @@ yourself with `setContent`. Use `startChat()`/`endChat()` and
 `startTool()`/`endTool()` when the open and the close happen in different
 functions.
 
+Two more setters apply to a custom span. `setTokenUsage(span, usage)` attaches
+token counts, which `endChat()` takes as an argument instead.
+`setCorrelation(span, { turnId?, distinctId?, sessionId?, project? })` stamps
+correlation ids onto a span produced outside an active turn, leaving any id you
+omit unset rather than blank.
+
 **Pitfall: an inline anonymous arrow gets a generic span name.** `tool()` and
 `interaction()` default the span name to the function's `.name`, which is empty
 for an inline arrow (`tool(async (q) => ...)` produces a span literally named

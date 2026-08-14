@@ -216,6 +216,12 @@ write the output yourself with `set_content`. Use `start_chat()`/`end_chat()`
 and `start_tool()`/`end_tool()` when the open and the close happen in different
 functions.
 
+Two more setters apply to a custom span, both from `neosigma.spans`.
+`set_token_usage(span, usage)` attaches token counts, which `end_chat()` takes
+as an argument instead. `set_correlation(span, *, turn_id="", distinct_id="",
+session_id="", project="")` stamps correlation ids onto a span produced outside
+an active turn, leaving any id you omit unset rather than blank.
+
 `@neosigma.interaction()` traces a function as an `invoke_agent` root span but
 does NOT create a turn (no ids); prefer `turn()` for the request boundary.
 `@neosigma.turn_handler(session_from=..., message_from=..., output_from=...)`
