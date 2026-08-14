@@ -446,18 +446,18 @@ When no wrapper fits, such as a step inside a function or a call whose
 boundary you do not control, open a span directly:
 
 ```ts
-import { span, spanKeys } from "neosigma";
+import { setContent, span } from "neosigma";
 
 const ranked = span("rerank", { input: { query, candidates: 20 } }, (s) => {
   const result = rerank(query, candidates);
-  spanKeys.setContent(s, { completion: JSON.stringify(result) });
+  setContent(s, { completion: JSON.stringify(result) });
   return result;
 });
 ```
 
 `span(name, { operation?, attributes?, input? }, fn)` records `input` and
 nothing else. The callback's return value is NOT captured, so write the output
-yourself with `spanKeys.setContent`. Use `startChat()`/`endChat()` and
+yourself with `setContent`. Use `startChat()`/`endChat()` and
 `startTool()`/`endTool()` when the open and the close happen in different
 functions.
 
