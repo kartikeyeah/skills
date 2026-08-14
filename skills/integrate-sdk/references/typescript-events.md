@@ -1,6 +1,6 @@
 # NeoSigma TypeScript product events integration
 
-Instrument a TypeScript/Node codebase with the npm package `neosigma-sdk` so
+Instrument a TypeScript/Node codebase with the npm package `neosigma` so
 product events (user actions) flow into NeoSigma and join the agent traces for
 the same turn. This file covers the product-events surface of the TypeScript
 SDK; for agent tracing (turns, the framework adapters, dual export) use
@@ -18,8 +18,8 @@ guessing.
 - Runtime shape: long-running server, serverless, or CLI (decides the flush
   strategy in section 4).
 - Module system: the SDK supports both ESM and CommonJS on Node
-  `^18.19.0 || >=20.6.0`. Use `import { capture } from "neosigma-sdk"` in ESM or
-  `const { capture } = require("neosigma-sdk")` in CommonJS.
+  `^18.19.0 || >=20.6.0`. Use `import { capture } from "neosigma"` in ESM or
+  `const { capture } = require("neosigma")` in CommonJS.
 - Next.js: emit events only from Node.js server code, never client components,
   middleware, or Edge routes. Initialize the SDK in the Node branch of
   `instrumentation.ts` as shown in [typescript-tracing.md](typescript-tracing.md),
@@ -28,11 +28,15 @@ guessing.
 ## 2. Install and lifecycle
 
 ```bash
-npm install neosigma-sdk@^0.7.0
+npm install neosigma@^0.9.0
 ```
 
+**Migrating from `neosigma-sdk`.** The npm package was renamed to `neosigma`.
+The old name is frozen at 0.7.0 and receives no further releases. Uninstall
+`neosigma-sdk`, install `neosigma`, then update every import.
+
 ```ts
-import { init, installShutdownHandlers } from "neosigma-sdk";
+import { init, installShutdownHandlers } from "neosigma";
 
 init(); // once at startup; reads NEOSIGMA_API_KEY; idempotent, never throws
 installShutdownHandlers(); // once at startup; flushes the queue on SIGTERM/SIGINT
@@ -72,7 +76,7 @@ A `turn()` (the tracing side, see
 example a pure user-action route with no model call.
 
 ```ts
-import { trace, capture, identify } from "neosigma-sdk";
+import { trace, capture, identify } from "neosigma";
 
 app.post("/chat", async (req, res) => {
   await trace({ turnId: req.body.turnId, distinctId: req.user.id }, async () => {

@@ -1,6 +1,6 @@
 # NeoSigma Python tracing integration
 
-Instrument a Python codebase with `neosigma-sdk` so agent runs land in
+Instrument a Python codebase with `neosigma` so agent runs land in
 NeoSigma as traces. This file is the API surface of record for the Python SDK
 (0.4.x). Parameters not listed here do not exist. If something seems missing,
 check https://docs.neosigma.ai/sdk/tracing rather than guessing.
@@ -28,13 +28,20 @@ rg -n "anthropic|openai|claude_agent_sdk|set_tracer_provider|TracerProvider|Fast
 ## 2. Install and lifecycle
 
 ```bash
-pip install neosigma-sdk                      # or: uv add neosigma-sdk
-pip install "neosigma-sdk[instrumentation]"   # only if auto-instrumenting raw LLM clients
-pip install "neosigma-sdk[fastapi]"           # only if using the FastAPI middleware
+pip install neosigma                      # or: uv add neosigma
+pip install "neosigma[instrumentation]"   # only if auto-instrumenting raw LLM clients
+pip install "neosigma[fastapi]"           # only if using the FastAPI middleware
 ```
 
+**Migrating from `neosigma-sdk`.** The distribution was renamed to `neosigma`
+and the import path from `neosigma_sdk` to `neosigma`. The old names are frozen
+at 0.7.0 and receive no further releases. Uninstall the old distribution,
+install `neosigma`, then replace every `neosigma_sdk` import with `neosigma`.
+Read the sections below against the current code rather than assuming the rest
+of the surface is unchanged.
+
 ```python
-import neosigma_sdk as neosigma
+import neosigma
 
 neosigma.init()        # once at startup; reads NEOSIGMA_API_KEY from the env
 ...
@@ -187,6 +194,11 @@ and adapters trace regardless.
 def search_kb(query: str): ...   # the function name, override: @neosigma.tool("kb")
 ```
 
+Call arguments and the return value are captured as span content, subject to
+the content capture setting in section 7. Prefer `@neosigma.tool()` over a
+manual span for a tool call. A manual `span()` records only what you pass it,
+so a tool traced that way shows its name with no input and no output.
+
 `@neosigma.interaction()` traces a function as an `invoke_agent` root span but
 does NOT create a turn (no ids); prefer `turn()` for the request boundary.
 `@neosigma.turn_handler(session_from=..., message_from=..., output_from=...)`
@@ -195,7 +207,7 @@ wraps a handler whose arguments already carry the ids.
 ### 4e. FastAPI / Starlette
 
 ```python
-from neosigma_sdk.integrations.fastapi import NeosigmaTurnMiddleware
+from neosigma.integrations.fastapi import NeosigmaTurnMiddleware
 app.add_middleware(NeosigmaTurnMiddleware)   # requires the [fastapi] extra
 ```
 
@@ -209,7 +221,7 @@ or `@turn_handler` in the handler instead when the response must be captured.
 ### 4f. LangChain
 
 ```python
-from neosigma_sdk.integrations.langchain import neosigma_callback_handler  # requires the [langchain] extra
+from neosigma.integrations.langchain import neosigma_callback_handler  # requires the [langchain] extra
 model = ChatAnthropic(model="claude-sonnet-4-6", callbacks=[neosigma_callback_handler()])
 ```
 
@@ -221,6 +233,39 @@ does NOT open a turn, so wrap the top-level run in `turn()` for turn/session
 correlation. Do NOT also enable raw-client auto-instrumentation (4c) for a model
 that wraps an instrumented client (`langchain-anthropic` over `anthropic`,
 `langchain-openai` over `openai`), or each call is recorded twice.
+
+### 4g. Record where a tool stored a file
+
+Use `neosigma.artifact()` to record the address of a file a tool produced.
+NeoSigma stores the address only. It never reads, uploads, or copies the file,
+so the value must be an address your own systems can resolve later. Requires
+0.9.0 or later.
+
+```python
+@neosigma.tool()
+def create_presentation(topic: str) -> str:
+    path = f"decks/{uuid4()}.pptx"
+    storage.upload(path, build_deck(topic))
+    neosigma.artifact(f"s3://artifacts/{path}", f"{topic}.pptx")
+    return "Created your deck."
+```
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `location` | Required | Where the artifact lives. Opaque to the SDK, so any address your systems resolve works, such as `s3://bucket/key` or `postgres://public.decks/9f3a`. |
+| `name` | `None` | Display label for the trace UI. |
+
+`artifact()` attaches to the span that is currently open, so call it inside a
+`@neosigma.tool()` function, inside a `turn()`, or inside any active span.
+Called with no active span, or before `init()`, it records nothing. Call it once
+per artifact. Multiple calls on one span accumulate in call order, up to 100 per
+span.
+
+Artifacts follow the content capture setting in section 7. When
+`capture_content` is `False`, no address is recorded. A location that is empty,
+longer than `max_content_chars`, or not UTF-8 encodable is dropped. A name that
+cannot be recorded is omitted while the entry keeps its location. Dropped
+references are logged on the first drop, then once per 100.
 
 ## 5. Existing OpenTelemetry: coexistence and dual export
 
@@ -262,7 +307,7 @@ the span.
 import os
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from neosigma_sdk import CorrelationSpanProcessor, NeoSigmaSpanProcessor
+from neosigma import CorrelationSpanProcessor, NeoSigmaSpanProcessor
 
 provider = TracerProvider(resource=...)
 provider.add_span_processor(CorrelationSpanProcessor())                                # FIRST

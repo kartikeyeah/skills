@@ -1,6 +1,6 @@
 ---
 name: integrate-sdk
-description: Integrates the NeoSigma SDKs into a codebase so traces and product events flow into NeoSigma. Activates on requests like "integrate NeoSigma", "add NeoSigma tracing to this app", "instrument this repo with neosigma-sdk", "get our traces into NeoSigma", "onboard this codebase to NeoSigma", "set up the NeoSigma SDK", "send product events to NeoSigma", "wire NeoSigma into our existing OpenTelemetry setup", or "dual export to NeoSigma and another backend". Do NOT use for analyzing traces already in NeoSigma, building evals, or developing the NeoSigma platform itself.
+description: Integrates the NeoSigma SDKs into a codebase so traces and product events flow into NeoSigma. Activates on requests like "integrate NeoSigma", "add NeoSigma tracing to this app", "migrate us off the old neosigma-sdk package", "get our traces into NeoSigma", "onboard this codebase to NeoSigma", "set up the NeoSigma SDK", "send product events to NeoSigma", "wire NeoSigma into our existing OpenTelemetry setup", or "dual export to NeoSigma and another backend". Do NOT use for analyzing traces already in NeoSigma, building evals, or developing the NeoSigma platform itself.
 ---
 
 # Integrate the NeoSigma SDK
