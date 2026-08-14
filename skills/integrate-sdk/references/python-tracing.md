@@ -199,6 +199,23 @@ the content capture setting in section 7. Prefer `@neosigma.tool()` over a
 manual span for a tool call. A manual `span()` records only what you pass it,
 so a tool traced that way shows its name with no input and no output.
 
+When no decorator fits, such as a step inside a function or a call whose
+boundary you do not control, open a span directly:
+
+```python
+from neosigma.spans import set_content   # not exported at the top level
+
+with neosigma.span("rerank", input={"query": query, "candidates": 20}) as s:
+    ranked = rerank(query, candidates)
+    set_content(s, completion=json.dumps(ranked))
+```
+
+`neosigma.span(name, *, operation=None, attributes=None, input=None)` records
+`input` and nothing else. A context manager has no return value to capture, so
+write the output yourself with `set_content`. Use `start_chat()`/`end_chat()`
+and `start_tool()`/`end_tool()` when the open and the close happen in different
+functions.
+
 `@neosigma.interaction()` traces a function as an `invoke_agent` root span but
 does NOT create a turn (no ids); prefer `turn()` for the request boundary.
 `@neosigma.turn_handler(session_from=..., message_from=..., output_from=...)`
