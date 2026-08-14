@@ -484,7 +484,7 @@ import { artifact, tool } from "neosigma";
 
 const createPresentation = tool(
   async (topic: string) => {
-    const path = `decks/${randomUUID()}.pptx`;
+    const path = `decks/${topic}.pptx`;
     await storage.upload(path, buildDeck(topic));
     artifact(`s3://artifacts/${path}`, `${topic}.pptx`);
     return "Created your deck.";

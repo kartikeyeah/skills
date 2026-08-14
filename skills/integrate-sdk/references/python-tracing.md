@@ -267,7 +267,7 @@ so the value must be an address your own systems can resolve later. Requires
 ```python
 @neosigma.tool()
 def create_presentation(topic: str) -> str:
-    path = f"decks/{uuid4()}.pptx"
+    path = f"decks/{topic}.pptx"
     storage.upload(path, build_deck(topic))
     neosigma.artifact(f"s3://artifacts/{path}", f"{topic}.pptx")
     return "Created your deck."
