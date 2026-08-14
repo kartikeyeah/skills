@@ -1,8 +1,8 @@
 # NeoSigma TypeScript tracing integration
 
-Instrument a TypeScript/Node codebase with the npm package `neosigma-sdk` so
+Instrument a TypeScript/Node codebase with the npm package `neosigma` so
 agent runs land in NeoSigma as traces. This file is the API surface of record
-for the TypeScript SDK (0.7.0 or later). Parameters and exports not listed here do not
+for the TypeScript SDK (0.9.0 or later). Parameters and exports not listed here do not
 exist. If something is missing, stop rather than guessing.
 
 The TypeScript SDK does full agent tracing (turns, framework adapters, dual
@@ -39,10 +39,10 @@ codebase's native module style:
 
 ```ts
 // ESM
-import { init, turn } from "neosigma-sdk";
+import { init, turn } from "neosigma";
 
 // CommonJS
-const { init, turn } = require("neosigma-sdk");
+const { init, turn } = require("neosigma");
 ```
 
 ### Next.js (Node runtime only)
@@ -59,25 +59,31 @@ OpenTelemetry dependencies out of Edge builds:
 // instrumentation.ts
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
-    const { init } = await import("neosigma-sdk");
+    const { init } = await import("neosigma");
     init();
   }
 }
 ```
 
 Then import `turn`, adapters, and event helpers normally from
-`"neosigma-sdk"` in the Node.js code path that runs the agent. Finish by
+`"neosigma"` in the Node.js code path that runs the agent. Finish by
 running `next build`; an integration is not complete until that production
 build and one instrumented request succeed.
 
 ## 2. Install and lifecycle
 
 ```bash
-npm install neosigma-sdk@^0.7.0
+npm install neosigma@^0.9.0
 ```
 
+**Migrating from `neosigma-sdk`.** The npm package was renamed to `neosigma`.
+The old name is frozen at 0.7.0 and receives no further releases. Uninstall
+`neosigma-sdk`, install `neosigma`, then update every import. Read the sections
+below against the current code rather than assuming the rest of the surface is
+unchanged.
+
 ```ts
-import { init, shutdown } from "neosigma-sdk";
+import { init, shutdown } from "neosigma";
 
 init(); // once at startup; reads NEOSIGMA_API_KEY; idempotent, never throws
 // ... run the agent ...
@@ -178,7 +184,7 @@ its promise settles, and records a thrown error as an ERROR-status span and
 re-throws. It returns whatever `fn` returns.
 
 ```ts
-import { turn } from "neosigma-sdk";
+import { turn } from "neosigma";
 
 const answer = await turn(
   { sessionId: chatId, distinctId: userId, turnId: requestId, userMessage: text },
@@ -233,7 +239,7 @@ wrap the server once. Both read `x-neosigma-session-id` and
 a caller cannot write into another turn's trace.
 
 ```ts
-import { expressTurnMiddleware, withTurn } from "neosigma-sdk";
+import { expressTurnMiddleware, withTurn } from "neosigma";
 
 // Express: mount AFTER express.json() (messageExtractor reads req.body).
 app.use(expressTurnMiddleware({ messageExtractor: (req) => req.body?.message }));
@@ -269,7 +275,7 @@ module hook is ready first. Bundlers require a runtime-specific recipe; the
 tested Next.js path is below.
 
 ```ts
-import { initAsync } from "neosigma-sdk";
+import { initAsync } from "neosigma";
 
 await initAsync({ tracingEnabled: true });
 const { default: OpenAI } = await import("openai");
@@ -294,7 +300,7 @@ Anthropic package names for a raw Anthropic client.
 ### 4a. Vercel AI SDK
 
 ```ts
-import { wrapAISDK } from "neosigma-sdk";
+import { wrapAISDK } from "neosigma";
 import * as ai from "ai";
 
 const { generateText, streamText } = wrapAISDK(ai);
@@ -328,7 +334,7 @@ stream to a response helper that returns before it finishes, or the turn closes
 early.
 
 ```ts
-import { turn } from "neosigma-sdk";
+import { turn } from "neosigma";
 
 await turn({ turnId, sessionId, userMessage }, async (t) => {
   const result = streamText({ model, prompt: userMessage });
@@ -339,14 +345,14 @@ await turn({ turnId, sessionId, userMessage }, async (t) => {
 ```
 
 If a `streamText`/`streamObject` call runs in the same synchronous tick as
-`wrapAISDK()`, `await preloadAISDK()` (exported from `neosigma-sdk`) first so that
+`wrapAISDK()`, `await preloadAISDK()` (exported from `neosigma`) first so that
 first stream's spans are captured; later calls self-heal.
 
 ### 4b. LangChain
 
 ```ts
-import { neosigmaCallbackHandler } from "neosigma-sdk";
-import { turn } from "neosigma-sdk";
+import { neosigmaCallbackHandler } from "neosigma";
+import { turn } from "neosigma";
 
 const handler = neosigmaCallbackHandler(); // reusable across invocations, incl. concurrent
 
@@ -372,7 +378,7 @@ provider its spans reach NeoSigma without owning the global.
 ### 4c. Claude Agent SDK
 
 ```ts
-import { traceClaude, wrapClaudeQuery } from "neosigma-sdk";
+import { traceClaude, wrapClaudeQuery } from "neosigma";
 
 for await (const message of traceClaude(query({ prompt }))) { ... }
 // Or a reusable drop-in that wraps query():
@@ -399,7 +405,7 @@ await turn({ sessionId, distinctId, userMessage: prompt }, async () => {
 ### 4d. Anthropic Managed Agents
 
 ```ts
-import { wrapManagedAgents } from "neosigma-sdk";
+import { wrapManagedAgents } from "neosigma";
 const client = wrapManagedAgents(new Anthropic());
 ```
 
@@ -411,7 +417,7 @@ children. No `turn()` needed; the adapter rotates turns itself.
 ### 4e. Tool functions and manual spans
 
 ```ts
-import { tool, interaction, turnHandler } from "neosigma-sdk";
+import { tool, interaction, turnHandler } from "neosigma";
 
 const search = tool(async (query: string) => db.search(query), { name: "search" });
 
@@ -425,18 +431,83 @@ const handleChat = turnHandler(
 );
 ```
 
-- `tool(fn, { name })` wraps a function as an `execute_tool` span (sets
-  `gen_ai.tool.name`).
+- `tool(fn, { name })` wraps a function as an `execute_tool` span. It sets
+  `gen_ai.tool.name` and captures the call arguments and the return value as
+  span content, subject to the content capture setting in section 7. Prefer it
+  over a manual span for a tool call. `span()` records only what you pass it, so
+  a tool traced that way shows its name with no input and no output.
 - `interaction(fn, { name })` wraps a function as an `invoke_agent` span but does
   NOT open a turn (no ids). Prefer `turn()` for the request boundary.
 - `turnHandler(fn, { sessionFrom, messageFrom, outputFrom })` wraps a handler
   whose arguments carry the ids into a `turn()`. Unlike bare `turn()`, it records
   the return value as output by default.
 
+When no wrapper fits, such as a step inside a function or a call whose
+boundary you do not control, open a span directly:
+
+```ts
+import { setContent, span } from "neosigma";
+
+const ranked = span("rerank", { input: { query, candidates: 20 } }, (s) => {
+  const result = rerank(query, candidates);
+  setContent(s, { completion: JSON.stringify(result) });
+  return result;
+});
+```
+
+`span(name, { operation?, attributes?, input? }, fn)` records `input` and
+nothing else. The callback's return value is NOT captured, so write the output
+yourself with `setContent`. Use `startChat()`/`endChat()` and
+`startTool()`/`endTool()` when the open and the close happen in different
+functions.
+
+Two more setters apply to a custom span. `setTokenUsage(span, usage)` attaches
+token counts, which `endChat()` takes as an argument instead.
+`setCorrelation(span, { turnId?, distinctId?, sessionId?, project? })` stamps
+correlation ids onto a span produced outside an active turn, leaving any id you
+omit unset rather than blank.
+
 **Pitfall: an inline anonymous arrow gets a generic span name.** `tool()` and
 `interaction()` default the span name to the function's `.name`, which is empty
 for an inline arrow (`tool(async (q) => ...)` produces a span literally named
 `tool`). Pass `{ name }`, or wrap a named `function`.
+
+### 4f. Record where a tool stored a file
+
+Use `artifact()` to record the address of a file a tool produced. NeoSigma
+stores the address only. It never reads, uploads, or copies the file, so the
+value must be an address your own systems can resolve later. Requires 0.9.0 or
+later.
+
+```ts
+import { artifact, tool } from "neosigma";
+
+const createPresentation = tool(
+  async (topic: string) => {
+    const path = `decks/${topic}.pptx`;
+    await storage.upload(path, buildDeck(topic));
+    artifact(`s3://artifacts/${path}`, `${topic}.pptx`);
+    return "Created your deck.";
+  },
+  { name: "create_presentation" },
+);
+```
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `location` | Required | Where the artifact lives. Opaque to the SDK, so any address your systems resolve works, such as `s3://bucket/key` or `postgres://public.decks/9f3a`. |
+| `name` | `undefined` | Display label for the trace UI. |
+
+`artifact()` attaches to the span that is currently open, so call it inside a
+`tool()` function, inside a `turn()`, or inside any active span. Called with no
+active span, or before `init()`, it records nothing. Call it once per artifact.
+Multiple calls on one span accumulate in call order, up to 100 per span.
+
+Artifacts follow the content capture setting in section 7. When
+`captureContent` is `false`, no address is recorded. A location that is empty or
+longer than `maxContentChars` is dropped. A name that cannot be recorded is
+omitted while the entry keeps its location. Dropped references are logged on the
+first drop, then once per 100.
 
 ## 5. Existing OpenTelemetry: coexistence and dual export
 
@@ -465,7 +536,7 @@ JS 2.x providers accept span processors only at construction and have no
 `addSpanProcessor`, so this is how you add a second backend.
 
 ```ts
-import { init } from "neosigma-sdk";
+import { init } from "neosigma";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-proto";
 
@@ -499,7 +570,7 @@ import {
   init,
   CorrelationSpanProcessor,
   NeoSigmaSpanProcessor,
-} from "neosigma-sdk";
+} from "neosigma";
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 
 const provider = new NodeTracerProvider({
