@@ -1,6 +1,6 @@
 # NeoSigma Skills
 
-[Agent Skills](https://github.com/anthropics/skills) that teach AI coding assistants how to work with [NeoSigma](https://neosigma.ai): instrument a codebase with the NeoSigma SDK so agent runs land as traces and product events join them, and import a codebase's existing checks into NeoSigma as verifiers.
+[Agent Skills](https://github.com/anthropics/skills) that teach AI coding assistants how to work with [NeoSigma](https://neosigma.ai): instrument a codebase with the NeoSigma SDK, import existing checks as verifiers, and evaluate Clay on GTM Bench.
 
 Full SDK documentation: [docs.neosigma.ai](https://docs.neosigma.ai)
 
@@ -10,6 +10,7 @@ Full SDK documentation: [docs.neosigma.ai](https://docs.neosigma.ai)
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [integrate-sdk](./skills/integrate-sdk) | Integrate the NeoSigma SDK: agent tracing (Python and TypeScript), product events (Python and TypeScript), framework adapters (Vercel AI SDK, LangChain, Claude Agent SDK, Managed Agents), and dual export with an existing OpenTelemetry setup, correlated per turn. |
 | [import-verifiers](./skills/import-verifiers) | Translate a codebase's trace-evaluable quality checks into repository-backed verifier YAML, then apply the complete set through the NeoSigma MCP sync workflow. |
+| [clay-plugin-eval](./skills/clay-plugin-eval) | Set up Clay credentials in a NeoSigma Vault, run the fixed GTM Bench dataset with and without the Clay plugin, and generate a comparison report. |
 
 ## Installation
 
@@ -80,3 +81,4 @@ Once installed, your agent can use these skills when you ask it to:
 - Dual-export to NeoSigma alongside an existing OpenTelemetry backend
 - Verify that traces and events reached NeoSigma
 - Import existing trace-evaluable quality checks as repository-backed verifier YAML
+- Evaluate the Clay plugin against the fixed GTM Bench dataset
