@@ -88,11 +88,11 @@ NEOSIGMA_DATASET_ID="2ea88908-b577-4df5-814c-4f6a8ebd5ee8"
 ## Run and report
 
 1. Initialize the current directory with the selected project, environment, and
-   new Vault. If `.neosigma/plugin-experiment.json` already differs, ask before
+   new Vault. If `.neosigma/experiment.json` already differs, ask before
    replacing it with `--force`.
 
    ```bash
-   neosigma experiments plugin init \
+   neosigma experiments init \
      --plugin clay \
      --project "$NEOSIGMA_PROJECT_ID" \
      --environment "$NEOSIGMA_ENVIRONMENT_ID" \
@@ -103,7 +103,7 @@ NEOSIGMA_DATASET_ID="2ea88908-b577-4df5-814c-4f6a8ebd5ee8"
    omit it only when the user requested the full dataset.
 
    ```bash
-   neosigma experiments plugin run \
+   neosigma experiments run \
      --dataset "$NEOSIGMA_DATASET_ID" \
      --task "<source-task-id>" \
      --runtime "$RUNTIME" \
@@ -118,16 +118,16 @@ NEOSIGMA_DATASET_ID="2ea88908-b577-4df5-814c-4f6a8ebd5ee8"
    After validation succeeds, run the same command without `--dry-run`.
 
 3. Read `experiment.id` from the response into `NEOSIGMA_EXPERIMENT_ID`, then
-   poll `neosigma experiments plugin show "$NEOSIGMA_EXPERIMENT_ID"` until
+   poll `neosigma experiments show "$NEOSIGMA_EXPERIMENT_ID"` until
    completion or failure. Do not start a replacement experiment automatically.
 
 4. Save the detailed results and create the report:
 
    ```bash
-   neosigma experiments plugin results "$NEOSIGMA_EXPERIMENT_ID" --json \
+   neosigma experiments results "$NEOSIGMA_EXPERIMENT_ID" --json \
      > clay-plugin-results.json
 
-   neosigma experiments plugin report "$NEOSIGMA_EXPERIMENT_ID" \
+   neosigma experiments report "$NEOSIGMA_EXPERIMENT_ID" \
      --html ./clay-plugin-report.html
    ```
 
