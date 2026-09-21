@@ -1,37 +1,38 @@
 ---
 name: clay-plugin-eval
-description: Set up Clay and run a NeoSigma paired experiment that compares the Clay plugin with a no-plugin control. Use when a user wants Codex to create their Clay Vault, run the fixed plugin dataset, and generate the comparison report.
+description: Set up Clay and run the GTM Bench experiment dataset. Use when a user wants Codex to create their Clay Vault, run selected GTM Bench tasks with the Clay plugin, and generate an experiment report.
 ---
 
 # Clay plugin experiment
 
-Set up one user's Clay access, run the fixed dataset with and without Clay, and return the reward comparison.
+Set up one user's Clay access, run selected tasks with the Clay plugin, and return the verifier results.
 
 ## Defaults
 
 - Dataset ID: `2ea88908-b577-4df5-814c-4f6a8ebd5ee8` (fixed)
 - Project ID: `129f3404-2f7f-4df8-9fcc-0164ffe92d73`
 - Environment ID: `00b9da33-0bd2-440f-a740-6098200e5721`
-- Runtime: `codex:gpt-5.6-sol`
-- Artifacts: `offer.md`, `icp.md`, and `leads.csv`
+- Harness: `codex`
+- Model: `gpt-5.6-sol`
 
-Use the default project, environment, and runtime unless the user provides replacements. Ask for source task IDs, and run the entire dataset only when the user explicitly requests it.
+Use the default project, environment, harness, and model unless the user provides replacements. Ask for source task IDs, and run the entire dataset only when the user explicitly requests it.
 
 After resolving overrides, use these shell variables in one persistent terminal session:
 
 ```bash
 NEOSIGMA_PROJECT_ID="129f3404-2f7f-4df8-9fcc-0164ffe92d73"
 NEOSIGMA_ENVIRONMENT_ID="00b9da33-0bd2-440f-a740-6098200e5721"
-RUNTIME="<selected-runtime>"
 NEOSIGMA_DATASET_ID="2ea88908-b577-4df5-814c-4f6a8ebd5ee8"
+NEOSIGMA_HARNESS="codex"
+NEOSIGMA_MODEL="gpt-5.6-sol"
 ```
 
 ## Set up Clay and its Vault
 
-1. Confirm `neosigma` and `jq` are available and `NEOSIGMA_API_KEY` and
-   `OPENAI_API_KEY` are set. If the CLI is missing or unauthenticated, follow
+1. Confirm `neosigma` and `jq` are available and `NEOSIGMA_API_KEY` is set. If
+   the CLI is missing or unauthenticated, follow
    [NeoSigma CLI getting started](https://docs.neosigma.ai/cli/getting-started).
-   Never print either key.
+   Never print the key.
 
 2. If the Clay plugin is not installed, follow the official
    [Clay setup](https://github.com/clay-run/agent-plugins/blob/main/GETTING_STARTED.md):
@@ -87,41 +88,32 @@ NEOSIGMA_DATASET_ID="2ea88908-b577-4df5-814c-4f6a8ebd5ee8"
 
 ## Run and report
 
-1. Initialize the current directory with the selected project, environment, and
-   new Vault. If `.neosigma/experiment.json` already differs, ask before
-   replacing it with `--force`.
-
-   ```bash
-   neosigma experiments init \
-     --plugin clay \
-     --project "$NEOSIGMA_PROJECT_ID" \
-     --environment "$NEOSIGMA_ENVIRONMENT_ID" \
-     --vault "$NEOSIGMA_VAULT_ID"
-   ```
-
-2. Run a selected task first with `--dry-run`. Repeat `--task` for more tasks, or
+1. Run a selected task first with `--dry-run`. Repeat `--task` for more tasks, or
    omit it only when the user requested the full dataset.
 
    ```bash
    neosigma experiments run \
      --dataset "$NEOSIGMA_DATASET_ID" \
      --task "<source-task-id>" \
-     --runtime "$RUNTIME" \
-     --artifact offer.md \
-     --artifact icp.md \
-     --artifact leads.csv \
+     --harness "$NEOSIGMA_HARNESS" \
+     --model "$NEOSIGMA_MODEL" \
+     --plugin clay \
+     --vault-id "$NEOSIGMA_VAULT_ID" \
+     --project "$NEOSIGMA_PROJECT_ID" \
+     --environment "$NEOSIGMA_ENVIRONMENT_ID" \
      --attempts 1 \
      --max-concurrency 2 \
      --dry-run
    ```
 
-   After validation succeeds, run the same command without `--dry-run`.
+   Repeat `--vault-id` if the plugin needs more than one Vault. After validation
+   succeeds, run the same command without `--dry-run`.
 
-3. Read `experiment.id` from the response into `NEOSIGMA_EXPERIMENT_ID`, then
+2. Read `experiment.id` from the response into `NEOSIGMA_EXPERIMENT_ID`, then
    poll `neosigma experiments show "$NEOSIGMA_EXPERIMENT_ID"` until
    completion or failure. Do not start a replacement experiment automatically.
 
-4. Save the detailed results and create the report:
+3. Save the detailed results and create the report:
 
    ```bash
    neosigma experiments results "$NEOSIGMA_EXPERIMENT_ID" --json \
@@ -131,6 +123,5 @@ NEOSIGMA_DATASET_ID="2ea88908-b577-4df5-814c-4f6a8ebd5ee8"
      --html ./clay-plugin-report.html
    ```
 
-Report the selected project and workspace, experiment ID, status, named reward
-deltas, failed trials, trace session IDs, and both output paths. Do not declare
-a global winner.
+Report the selected project and workspace, experiment ID, status, named rewards,
+failed trials, trace session IDs, and both output paths.
