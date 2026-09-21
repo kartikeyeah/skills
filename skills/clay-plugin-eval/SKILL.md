@@ -1,6 +1,6 @@
 ---
 name: clay-plugin-eval
-description: Set up Clay and run the fixed NeoSigma plugin evaluation dataset. Use when a user wants Codex to create their Clay Vault, run selected GTM Bench tasks with the Clay plugin, and generate an experiment report.
+description: Set up Clay and run the GTM Bench experiment dataset. Use when a user wants Codex to create their Clay Vault, run selected GTM Bench tasks with the Clay plugin, and generate an experiment report.
 ---
 
 # Clay plugin experiment
